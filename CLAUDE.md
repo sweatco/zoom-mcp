@@ -12,6 +12,8 @@ MCP server that lets Claude access Zoom meeting transcripts and AI summaries. Us
 
 **MVP2 (planned)**: Admin proxy - Server-to-Server OAuth with admin scopes enables org-wide access. Users can access meetings they attended (not just hosted). See `docs/plans/mvp2.md`.
 
+**MVP3 (planned)**: Pre-registration rules & admin tools - Admins can pre-register users for meetings and grant/revoke access on-demand. See `docs/plans/mvp3.md`.
+
 ## Tech Stack
 
 - TypeScript + ESM modules
@@ -43,7 +45,7 @@ npm run test:admin-api  # Test S2S OAuth (requires .env)
 - `src/` - MCP server implementation
 - `cloud-function/` - GCP proxy scaffold (MVP2)
 - `scripts/` - Development and testing utilities
-- `docs/plans/` - Architecture plans (mvp1, mvp2)
+- `docs/plans/` - Architecture plans (mvp1, mvp2, mvp3)
 
 ## Testing
 
