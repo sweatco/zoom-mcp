@@ -1,0 +1,13 @@
+{
+  "name": "zoom-mcp-oauth",
+  "version": "1.0.0",
+  "description": "OAuth token exchange proxy for zoom-mcp",
+  "main": "index.js",
+  "type": "module",
+  "engines": {
+    "node": ">=18"
+  },
+  "dependencies": {
+    "@google-cloud/functions-framework": "^3.0.0"
+  }
+}
