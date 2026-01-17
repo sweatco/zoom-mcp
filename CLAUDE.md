@@ -1,85 +1,52 @@
 # Zoom MCP Server
 
-## Project Overview
-MCP (Model Context Protocol) server for Zoom that enables LLMs to access meeting transcripts and AI summaries. Installable via `npx @sweatco/zoom-mcp`.
+MCP server that lets Claude access Zoom meeting transcripts and AI summaries. Users can query their meetings, get transcripts, and search across meeting content.
+
+## Architecture
+
+**MVP1 (implemented)**: User OAuth flow - each user authorizes their own Zoom account, can only access meetings they hosted.
+
+**MVP2 (planned)**: Admin proxy - Server-to-Server OAuth with admin scopes enables org-wide access. Users can access meetings they attended (not just hosted). See `docs/plans/mvp2.md`.
 
 ## Tech Stack
-- TypeScript with ESM modules
-- `@modelcontextprotocol/sdk` for MCP server implementation
-- Zoom OAuth 2.0 with localhost browser flow (user-friendly, no setup needed)
-- Token storage: OS keychain (primary) + `~/.config/zoom-mcp/` (fallback)
-- stdio transport for local execution
 
-## Key Commands
+- TypeScript + ESM modules
+- `@modelcontextprotocol/sdk` for MCP protocol
+- Zoom OAuth 2.0 with browser flow
+- Token storage: OS keychain (primary), file fallback
+
+## Commands
+
 ```bash
-npm run build      # Compile TypeScript
-npm run dev        # Watch mode for development
-npm start          # Run the MCP server
-npx .              # Test locally as MCP server
-```
-
-## Project Structure
-```
-src/
-├── index.ts              # MCP server entry point
-├── auth/
-│   ├── constants.ts      # OAuth config (client ID, scopes)
-│   ├── oauth.ts          # Browser OAuth flow
-│   └── token-store.ts    # Token persistence (keychain + file)
-├── zoom-client.ts        # Zoom API client
-├── tools/
-│   ├── list-meetings.ts  # list_meetings tool
-│   ├── get-transcript.ts # get_transcript tool
-│   ├── get-summary.ts    # get_summary tool
-│   ├── get-meeting.ts    # get_meeting tool
-│   └── search.ts         # search_meetings tool
-├── utils/
-│   └── vtt-parser.ts     # VTT to plain text converter
-└── types.ts              # TypeScript interfaces
+npm run build           # Compile TypeScript
+npm run dev             # Watch mode
+npm start               # Run MCP server
+npm run test:admin-api  # Test S2S OAuth (requires .env)
 ```
 
 ## MCP Tools
-- `list_meetings` - List recent meetings with transcript/summary availability
-- `get_transcript` - Get full meeting transcript (VTT or AI summary fallback)
-- `get_summary` - Get AI Companion meeting summary
-- `get_meeting` - Get meeting details and participants
-- `search_meetings` - Search across transcripts and summaries
 
-## OAuth Scopes Required
-- `cloud_recording:read:list_user_recordings:master`
-- `cloud_recording:read:list_recording_files:master`
-- `meeting_summary:read`
-- `meeting:read`
-- `user:read`
+| Tool | Description |
+|------|-------------|
+| `list_meetings` | List recent meetings with transcript/summary availability |
+| `get_transcript` | Get full meeting transcript (VTT or AI summary fallback) |
+| `get_summary` | Get AI Companion meeting summary |
+| `get_meeting` | Get meeting details and participants |
+| `search_meetings` | Search across transcripts and summaries |
 
-## Zoom API Endpoints Used
-- `GET /users/me/recordings` - List recordings
-- `GET /meetings/{id}/recordings` - Get recording files + VTT
-- `GET /meetings/{id}/meeting_summary` - Get AI summary
-- `GET /past_meetings/{id}` - Get meeting details
-- `GET /past_meetings/{id}/participants` - Get participants
+## Key Directories
+
+- `src/` - MCP server implementation
+- `cloud-function/` - GCP proxy scaffold (MVP2)
+- `scripts/` - Development and testing utilities
+- `docs/plans/` - Architecture plans (mvp1, mvp2)
 
 ## Testing
-```bash
-# Build first
-npm run build
 
+```bash
 # Test with MCP Inspector
 npx @modelcontextprotocol/inspector node dist/index.js
 
-# Logout (clear stored tokens)
+# Clear stored tokens
 npx . --logout
-```
-
-## Configuration for Claude
-Add to Claude Desktop config (`~/Library/Application Support/Claude/claude_desktop_config.json`):
-```json
-{
-  "mcpServers": {
-    "zoom": {
-      "command": "npx",
-      "args": ["-y", "@sweatco/zoom-mcp"]
-    }
-  }
-}
 ```
