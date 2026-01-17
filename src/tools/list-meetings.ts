@@ -1,5 +1,6 @@
 import { z } from 'zod';
 import { getZoomClient } from '../zoom-client.js';
+import { isProxyConfigured, listMeetingsFromProxy } from '../proxy-client.js';
 import type { MeetingInfo } from '../types.js';
 
 export const listMeetingsSchema = z.object({
@@ -88,6 +89,31 @@ export async function listMeetings(input: ListMeetingsInput): Promise<MeetingInf
   const fromDate = input.from_date || getDefaultFromDate();
   const toDate = input.to_date || getDefaultToDate();
 
+  // If proxy is configured, use it to get meetings user participated in
+  // This includes meetings they attended but didn't host
+  if (isProxyConfigured()) {
+    try {
+      const proxyMeetings = await listMeetingsFromProxy(fromDate, toDate);
+
+      // Apply filter
+      let filteredMeetings = proxyMeetings;
+      if (filterType === 'with_summary') {
+        filteredMeetings = proxyMeetings.filter((m) => m.has_summary);
+      } else if (filterType === 'recorded') {
+        filteredMeetings = proxyMeetings.filter((m) => m.has_recording);
+      }
+
+      // Sort by date descending (most recent first)
+      filteredMeetings.sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
+
+      return filteredMeetings;
+    } catch (error) {
+      // Proxy failed, fall back to direct API
+      console.error('Proxy list-meetings failed, falling back to direct API:', error);
+    }
+  }
+
+  // Direct Zoom API (only returns meetings user hosted)
   const pastMeetingsResponse = await client.listPastMeetings(fromDate, toDate);
 
   // Get unique meeting IDs to fetch instances for

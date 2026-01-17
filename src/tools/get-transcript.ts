@@ -1,5 +1,6 @@
 import { z } from 'zod';
 import { getZoomClient } from '../zoom-client.js';
+import { isProxyConfigured, getTranscriptFromProxy, ProxyError } from '../proxy-client.js';
 import { vttToPlainText } from '../utils/vtt-parser.js';
 import type { TranscriptResponse } from '../types.js';
 
@@ -15,105 +16,148 @@ export async function getTranscript(input: GetTranscriptInput): Promise<Transcri
   const client = getZoomClient();
   const instanceUuid = input.instance_uuid;
 
+  // Try direct Zoom API first (for meetings user hosted)
+  let directApiFailed = false;
+
   // First, try to get VTT transcript from cloud recording
-  const vttContent = await client.getRecordingTranscript(instanceUuid);
+  try {
+    const vttContent = await client.getRecordingTranscript(instanceUuid);
 
-  if (vttContent) {
-    // Get meeting details for topic
-    let topic = 'Unknown Meeting';
-    let date = '';
+    if (vttContent) {
+      // Get meeting details for topic
+      let topic = 'Unknown Meeting';
+      let date = '';
 
-    try {
-      const recording = await client.getMeetingRecordings(instanceUuid);
-      topic = recording.topic;
-      date = recording.start_time;
-    } catch {
-      // Couldn't get recording details, use defaults
+      try {
+        const recording = await client.getMeetingRecordings(instanceUuid);
+        topic = recording.topic;
+        date = recording.start_time;
+      } catch {
+        // Couldn't get recording details, use defaults
+      }
+
+      return {
+        meeting_id: instanceUuid,
+        topic,
+        date,
+        source: 'recording',
+        transcript: vttToPlainText(vttContent),
+      };
     }
-
-    return {
-      meeting_id: instanceUuid,
-      topic,
-      date,
-      source: 'recording',
-      transcript: vttToPlainText(vttContent),
-    };
+  } catch {
+    directApiFailed = true;
   }
 
   // Second, try AI Companion transcript (using instance UUID)
-  const aiTranscript = await client.getAICompanionTranscript(instanceUuid, true);
+  if (!directApiFailed) {
+    try {
+      const aiTranscript = await client.getAICompanionTranscript(instanceUuid, true);
 
-  if (aiTranscript && aiTranscript.transcript_text) {
-    // The transcript is in VTT format, convert to plain text
-    const transcriptText = aiTranscript.transcript_text.startsWith('WEBVTT')
-      ? vttToPlainText(aiTranscript.transcript_text)
-      : aiTranscript.transcript_text;
+      if (aiTranscript && aiTranscript.transcript_text) {
+        // The transcript is in VTT format, convert to plain text
+        const transcriptText = aiTranscript.transcript_text.startsWith('WEBVTT')
+          ? vttToPlainText(aiTranscript.transcript_text)
+          : aiTranscript.transcript_text;
 
-    return {
-      meeting_id: instanceUuid,
-      topic: aiTranscript.meeting_topic || 'Unknown Meeting',
-      date: aiTranscript.transcript_created_time || '',
-      source: 'recording',
-      transcript: transcriptText,
-    };
+        return {
+          meeting_id: instanceUuid,
+          topic: aiTranscript.meeting_topic || 'Unknown Meeting',
+          date: aiTranscript.transcript_created_time || '',
+          source: 'recording',
+          transcript: transcriptText,
+        };
+      }
+    } catch {
+      directApiFailed = true;
+    }
   }
 
-  // Fallback: Try to get content from AI summary (using instance UUID)
-  const summary = await client.getMeetingSummary(instanceUuid);
+  // Third, try AI summary as fallback
+  if (!directApiFailed) {
+    try {
+      const summary = await client.getMeetingSummary(instanceUuid);
 
-  if (summary) {
-    // AI summaries don't have a full transcript, but we can provide the summary details
-    // as a transcript-like format
-    let transcriptText = '';
+      if (summary) {
+        // AI summaries don't have a full transcript, but we can provide the summary details
+        // as a transcript-like format
+        let transcriptText = '';
 
-    if (summary.summary_overview) {
-      transcriptText += `Overview:\n${summary.summary_overview}\n\n`;
-    }
-
-    if (summary.summary_details && summary.summary_details.length > 0) {
-      transcriptText += 'Key Topics:\n';
-      for (const detail of summary.summary_details) {
-        transcriptText += `\n${detail.label}:\n${detail.summary}\n`;
-      }
-      transcriptText += '\n';
-    }
-
-    // Check for edited summary content
-    const edited = summary.edited_summary;
-    if (edited) {
-      if (edited.summary_overview) {
-        transcriptText = `Overview:\n${edited.summary_overview}\n\n` + transcriptText.replace(/^Overview:[\s\S]*?\n\n/, '');
-      }
-      if (edited.summary_details && edited.summary_details.length > 0) {
-        // Replace key topics section
-        const beforeTopics = transcriptText.split('Key Topics:')[0];
-        transcriptText = beforeTopics + 'Key Topics:\n';
-        for (const detail of edited.summary_details) {
-          transcriptText += `\n${detail.label}:\n${detail.summary}\n`;
+        if (summary.summary_overview) {
+          transcriptText += `Overview:\n${summary.summary_overview}\n\n`;
         }
-        transcriptText += '\n';
-      }
-    }
 
-    if (summary.next_steps && summary.next_steps.length > 0) {
-      transcriptText += 'Next Steps:\n';
-      for (const step of summary.next_steps) {
-        transcriptText += `- ${step}\n`;
-      }
-    } else if (edited?.next_steps && edited.next_steps.length > 0) {
-      transcriptText += 'Next Steps:\n';
-      for (const step of edited.next_steps) {
-        transcriptText += `- ${step}\n`;
-      }
-    }
+        if (summary.summary_details && summary.summary_details.length > 0) {
+          transcriptText += 'Key Topics:\n';
+          for (const detail of summary.summary_details) {
+            transcriptText += `\n${detail.label}:\n${detail.summary}\n`;
+          }
+          transcriptText += '\n';
+        }
 
-    return {
-      meeting_id: instanceUuid,
-      topic: summary.meeting_topic,
-      date: summary.meeting_start_time,
-      source: 'summary',
-      transcript: transcriptText.trim(),
-    };
+        // Check for edited summary content
+        const edited = summary.edited_summary;
+        if (edited) {
+          if (edited.summary_overview) {
+            transcriptText =
+              `Overview:\n${edited.summary_overview}\n\n` +
+              transcriptText.replace(/^Overview:[\s\S]*?\n\n/, '');
+          }
+          if (edited.summary_details && edited.summary_details.length > 0) {
+            // Replace key topics section
+            const beforeTopics = transcriptText.split('Key Topics:')[0];
+            transcriptText = beforeTopics + 'Key Topics:\n';
+            for (const detail of edited.summary_details) {
+              transcriptText += `\n${detail.label}:\n${detail.summary}\n`;
+            }
+            transcriptText += '\n';
+          }
+        }
+
+        if (summary.next_steps && summary.next_steps.length > 0) {
+          transcriptText += 'Next Steps:\n';
+          for (const step of summary.next_steps) {
+            transcriptText += `- ${step}\n`;
+          }
+        } else if (edited?.next_steps && edited.next_steps.length > 0) {
+          transcriptText += 'Next Steps:\n';
+          for (const step of edited.next_steps) {
+            transcriptText += `- ${step}\n`;
+          }
+        }
+
+        return {
+          meeting_id: instanceUuid,
+          topic: summary.meeting_topic,
+          date: summary.meeting_start_time,
+          source: 'summary',
+          transcript: transcriptText.trim(),
+        };
+      }
+    } catch {
+      directApiFailed = true;
+    }
+  }
+
+  // Try proxy (for meetings user attended but didn't host)
+  if (isProxyConfigured()) {
+    try {
+      return await getTranscriptFromProxy(instanceUuid);
+    } catch (error) {
+      if (error instanceof ProxyError) {
+        if (error.status === 403) {
+          throw new Error(
+            `Access denied. You did not participate in meeting ${instanceUuid}.`
+          );
+        }
+        if (error.status === 404) {
+          throw new Error(
+            `No transcript available for meeting ${instanceUuid}. ` +
+              'The meeting may not have been recorded.'
+          );
+        }
+      }
+      throw error;
+    }
   }
 
   // No transcript available from either source
