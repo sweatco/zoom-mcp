@@ -26,7 +26,9 @@ Add to Claude Desktop config (`~/Library/Application Support/Claude/claude_deskt
       "command": "npx",
       "args": ["-y", "@sweatco/zoom-mcp"],
       "env": {
-        "ZOOM_PROXY_URL": "https://your-proxy-url.cloudfunctions.net/zoom-proxy-api"
+        "ZOOM_CLIENT_ID": "your-zoom-client-id",
+        "ZOOM_OAUTH_PROXY_URL": "https://your-region-your-project.cloudfunctions.net/zoom-mcp-oauth",
+        "ZOOM_PROXY_URL": "https://your-region-your-project.cloudfunctions.net/zoom-proxy-api"
       }
     }
   }

@@ -1,10 +1,19 @@
 // OAuth Configuration
 
-// Zoom OAuth app Client ID (public, safe to commit)
-export const ZOOM_CLIENT_ID = '12HSakNTRpGJCHXGOgbPFQ';
+// Zoom OAuth app Client ID (must be set via environment variable)
+export const ZOOM_CLIENT_ID = process.env.ZOOM_CLIENT_ID || '';
 
 // OAuth proxy URL (Cloud Function that securely holds the client secret)
-export const OAUTH_PROXY_URL = 'https://europe-west1-zoom-mcp-oauth.cloudfunctions.net/zoom-mcp-oauth';
+// Must be set via environment variable
+export const OAUTH_PROXY_URL = process.env.ZOOM_OAUTH_PROXY_URL || '';
+
+if (!ZOOM_CLIENT_ID) {
+  throw new Error('ZOOM_CLIENT_ID environment variable is required');
+}
+
+if (!OAUTH_PROXY_URL) {
+  throw new Error('ZOOM_OAUTH_PROXY_URL environment variable is required');
+}
 
 export const ZOOM_OAUTH_AUTHORIZE_URL = 'https://zoom.us/oauth/authorize';
 export const ZOOM_API_BASE_URL = 'https://api.zoom.us/v2';
