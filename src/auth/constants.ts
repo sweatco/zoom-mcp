@@ -4,7 +4,7 @@
 export const ZOOM_CLIENT_ID = '12HSakNTRpGJCHXGOgbPFQ';
 
 // OAuth proxy URL (Cloud Function that securely holds the client secret)
-export const OAUTH_PROXY_URL = 'https://us-central1-zoom-mcp-oauth.cloudfunctions.net/zoom-mcp-oauth';
+export const OAUTH_PROXY_URL = 'https://europe-west1-zoom-mcp-oauth.cloudfunctions.net/zoom-mcp-oauth';
 
 export const ZOOM_OAUTH_AUTHORIZE_URL = 'https://zoom.us/oauth/authorize';
 export const ZOOM_API_BASE_URL = 'https://api.zoom.us/v2';
