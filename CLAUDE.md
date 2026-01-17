@@ -2,6 +2,10 @@
 
 MCP server that lets Claude access Zoom meeting transcripts and AI summaries. Users can query their meetings, get transcripts, and search across meeting content.
 
+## Git Policy
+
+**Do not commit or push automatically.** Always wait for explicit user confirmation before running git commit or git push.
+
 ## Architecture
 
 **MVP1 (implemented)**: User OAuth flow - each user authorizes their own Zoom account, can only access meetings they hosted.
