@@ -1,0 +1,27 @@
+{
+  "name": "zoom-mcp-cloud-functions",
+  "version": "1.0.0",
+  "description": "Zoom MCP cloud functions - OAuth, webhook handler, and API proxy",
+  "main": "dist/index.js",
+  "type": "module",
+  "engines": {
+    "node": ">=20"
+  },
+  "scripts": {
+    "build": "tsc",
+    "dev": "tsc --watch",
+    "deploy:oauth": "gcloud functions deploy zoom-mcp-oauth --gen2 --region=europe-west1 --runtime=nodejs20 --trigger-http --allow-unauthenticated --entry-point=oauth --source=. --set-secrets=ZOOM_CLIENT_SECRET=zoom-mcp-client-secret:latest --set-env-vars=ZOOM_CLIENT_ID=${ZOOM_CLIENT_ID}",
+    "deploy:webhook": "gcloud functions deploy zoom-webhook-handler --gen2 --region=europe-west1 --runtime=nodejs20 --trigger-http --allow-unauthenticated --entry-point=webhookHandler --source=. --set-env-vars=ZOOM_ADMIN_ACCOUNT_ID=${ZOOM_ADMIN_ACCOUNT_ID},ZOOM_ADMIN_CLIENT_ID=${ZOOM_ADMIN_CLIENT_ID} --set-secrets=ZOOM_ADMIN_CLIENT_SECRET=zoom-admin-client-secret:latest,ZOOM_WEBHOOK_SECRET_TOKEN=zoom-webhook-secret-token:latest",
+    "deploy:api": "gcloud functions deploy zoom-proxy-api --gen2 --region=europe-west1 --runtime=nodejs20 --trigger-http --allow-unauthenticated --entry-point=proxyApi --source=. --set-env-vars=ZOOM_ADMIN_ACCOUNT_ID=${ZOOM_ADMIN_ACCOUNT_ID},ZOOM_ADMIN_CLIENT_ID=${ZOOM_ADMIN_CLIENT_ID} --set-secrets=ZOOM_ADMIN_CLIENT_SECRET=zoom-admin-client-secret:latest",
+    "deploy:cleanup": "gcloud functions deploy zoom-cleanup --gen2 --region=europe-west1 --runtime=nodejs20 --trigger-http --no-allow-unauthenticated --entry-point=cleanup --source=."
+  },
+  "dependencies": {
+    "@google-cloud/firestore": "^7.0.0",
+    "@google-cloud/functions-framework": "^3.0.0",
+    "dotenv": "^17.2.3"
+  },
+  "devDependencies": {
+    "@types/node": "^20.0.0",
+    "typescript": "^5.0.0"
+  }
+}

@@ -1,0 +1,13 @@
+{
+  "indexes": [
+    {
+      "collectionGroup": "meeting_participants",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "participant_email", "order": "ASCENDING" },
+        { "fieldPath": "start_time", "order": "DESCENDING" }
+      ]
+    }
+  ],
+  "fieldOverrides": []
+}
