@@ -1,0 +1,8 @@
+{
+  "mcpServers": {
+    "zoom": {
+      "command": "npm",
+      "args": ["start"]
+    }
+  }
+}
