@@ -121,14 +121,7 @@ interface MeetingParticipantRecord {
 - Prevents duplicates if webhook fires multiple times
 - Allows direct lookup if needed
 
-### Firestore Indexes
-
-```
-Collection: meeting_participants
-Composite Index:
-  - participant_email ASC
-  - start_time DESC
-```
+**Required Index**: Composite index on `participant_email` (ASC) + `start_time` (DESC). See Setup Guide for deployment.
 
 ## Components
 
@@ -139,6 +132,7 @@ Composite Index:
 **Responsibilities**:
 - Validate webhook signature
 - Extract meeting data and participant list
+- **Always create a record for the host** (even if not in participant list)
 - Create one Firestore document per participant
 - Handle idempotency (same meeting won't create duplicates)
 
@@ -161,6 +155,33 @@ Composite Index:
         { "user_name": "Victor", "email": "victor@sweatco.in" }
       ]
     }
+  }
+}
+```
+
+**Host Handling**:
+```typescript
+// Always ensure host has a participation record
+const participants = new Map<string, ParticipantInfo>();
+
+// Add host first (from webhook payload, always available)
+if (payload.object.host_email) {
+  participants.set(payload.object.host_email, {
+    email: payload.object.host_email,
+    name: payload.object.user_name || 'Host',
+    is_host: true,
+  });
+}
+
+// Add all participants (may include host, Map dedupes by email)
+for (const p of payload.object.participant || []) {
+  if (p.email) {
+    const existing = participants.get(p.email);
+    participants.set(p.email, {
+      email: p.email,
+      name: p.user_name,
+      is_host: existing?.is_host || false,
+    });
   }
 }
 ```
@@ -231,11 +252,17 @@ Body: {
 
 Same pattern as get-summary.
 
-### 5. Backfill Worker
+### 5. Backfill Worker (Local Script)
 
-**Trigger**: Manual (one-time or periodic)
+**Location**: `scripts/backfill.ts` (run locally, not deployed to GCP)
 
 **Purpose**: Import historical meeting data for meetings that occurred before webhook was set up.
+
+**Usage**:
+```bash
+# Set up .env with admin credentials
+npm run backfill -- --from=2025-12-01 --to=2026-01-17
+```
 
 **Flow**:
 1. Use admin credentials to list all users in account
@@ -244,9 +271,114 @@ Same pattern as get-summary.
 4. Store participant records in Firestore
 
 **Considerations**:
-- Rate limiting (Zoom API limits)
+- Rate limiting (Zoom API limits ~10 req/sec)
 - Pagination handling
 - Progress tracking (to resume if interrupted)
+- Requires `GOOGLE_APPLICATION_CREDENTIALS` for Firestore access
+
+### 6. Cleanup Job (Cloud Scheduler)
+
+**Trigger**: Cloud Scheduler, runs monthly (1st of each month)
+
+**Purpose**: Delete meeting records older than 1 year to maintain data retention policy.
+
+**Implementation**:
+```typescript
+// Delete documents where start_time < (now - 365 days)
+const cutoff = new Date(Date.now() - 365 * 24 * 60 * 60 * 1000);
+const oldDocs = await db.collection('meeting_participants')
+  .where('start_time', '<', cutoff.toISOString())
+  .limit(500)
+  .get();
+
+// Batch delete (Firestore limit: 500 per batch)
+const batch = db.batch();
+oldDocs.docs.forEach(doc => batch.delete(doc.ref));
+await batch.commit();
+```
+
+**Setup**: See Step 8 in Setup Guide.
+
+## Admin Mode
+
+### Overview
+
+Zoom account Owners and Admins can query **any meeting** in the account without the participation check. This enables privileged users to access all meeting data for support, compliance, or administrative purposes.
+
+### Zoom Role IDs (Fixed)
+
+Zoom uses fixed role IDs across all accounts ([confirmed by Zoom](https://devforum.zoom.us/t/default-roles-in-all-zoom-account/60303)):
+
+| Role | role_id | Access Level |
+|------|---------|--------------|
+| Owner | 0 | Full admin mode |
+| Admin | 1 | Full admin mode |
+| Member | 2 | Participation-based only |
+
+### Implementation
+
+When validating a user's token, also fetch their `role_id`:
+
+```typescript
+// In validate-token.ts
+interface UserInfo {
+  email: string;
+  role_id: number;
+  isAdmin: boolean;  // role_id <= 1
+}
+
+async function validateUserToken(token: string): Promise<UserInfo> {
+  const res = await fetch('https://api.zoom.us/v2/users/me', {
+    headers: { Authorization: `Bearer ${token}` }
+  });
+  const user = await res.json();
+  return {
+    email: user.email,
+    role_id: user.role_id,
+    isAdmin: user.role_id <= 1
+  };
+}
+```
+
+### Modified Endpoint Behavior
+
+#### `/list-meetings`
+
+```typescript
+// Request body gains optional parameters for admins
+Body: {
+  from_date?: string;
+  to_date?: string;
+  limit?: number;
+  // Admin-only parameters:
+  user_email?: string;      // Query meetings for specific user (admin only)
+  all_meetings?: boolean;   // Return all meetings, not filtered by participation
+}
+```
+
+**Flow**:
+1. Validate token → get email + role_id
+2. If `isAdmin` AND (`user_email` OR `all_meetings`):
+   - Query Firestore without participation filter (or filter by specified user_email)
+3. Else:
+   - Standard flow: filter by authenticated user's email
+
+#### `/get-summary` and `/get-transcript`
+
+**Flow**:
+1. Validate token → get email + role_id
+2. If `isAdmin`:
+   - Skip participation check, fetch data directly
+3. Else:
+   - Check Firestore for participation record
+   - 403 if not a participant
+
+### Security Considerations
+
+- Role check happens server-side using the user's OAuth token
+- Admin status cannot be spoofed (derived from Zoom's `/users/me` response)
+- All admin access is auditable via Cloud Function logs
+- Consider adding explicit audit logging for admin queries
 
 ## Security
 
@@ -272,25 +404,6 @@ User                    MCP Client              Cloud Function           Zoom AP
   │                         │                         │                      │
   │                         │  ◄── meetings list ─────│                      │
   │  ◄── meetings ──────────│                         │                      │
-```
-
-### Admin Credentials Storage
-
-- **Client Secret**: Store in Google Cloud Secret Manager (sensitive)
-- **Account ID & Client ID**: Regular environment variables (not sensitive)
-- Access via Cloud Function IAM
-- Never exposed to client
-- Rotate periodically
-
-```bash
-# Create secret for client secret only
-gcloud secrets create zoom-admin-client-secret --project=zoom-mcp-oauth
-echo -n "YOUR_CLIENT_SECRET" | gcloud secrets versions add zoom-admin-client-secret --data-file=-
-
-# Deploy with env vars + secret
-gcloud functions deploy zoom-proxy-api \
-  --set-env-vars=ZOOM_ADMIN_ACCOUNT_ID=xxx,ZOOM_ADMIN_CLIENT_ID=yyy \
-  --set-secrets=ZOOM_ADMIN_CLIENT_SECRET=zoom-admin-client-secret:latest
 ```
 
 ### Required Admin Scopes (Server-to-Server OAuth)
@@ -353,13 +466,168 @@ All endpoints tested and verified with admin scopes:
 
 4. **Rate limits**: ~10 requests/second for most endpoints
 
+## Setup Guide
+
+### Step 1: Create Zoom Server-to-Server OAuth App
+
+1. Go to [Zoom Marketplace](https://marketplace.zoom.us/) → Develop → Build App
+2. Choose **Server-to-Server OAuth** app type
+3. Fill in app name (e.g., "Zoom MCP Proxy")
+4. Note down:
+   - **Account ID**
+   - **Client ID**
+   - **Client Secret**
+5. Add required scopes (see "Required Admin Scopes" section above)
+6. Activate the app
+
+### Step 2: Configure Webhook
+
+1. In the same app, go to **Feature** → **Event Subscriptions**
+2. Toggle "Event Subscriptions" ON
+3. Click **Add Event Subscription**:
+   - Subscription Name: `meeting-ended`
+   - Event notification endpoint URL: `https://<region>-<project>.cloudfunctions.net/zoom-webhook-handler`
+4. Click **Add Events** → Meeting → `meeting.ended`
+5. Save and note down the **Secret Token** (generated automatically)
+
+### Step 3: Set Up GCP Project
+
+```bash
+# Set project
+gcloud config set project zoom-mcp-oauth
+
+# Enable required APIs
+gcloud services enable \
+  cloudfunctions.googleapis.com \
+  firestore.googleapis.com \
+  secretmanager.googleapis.com
+```
+
+### Step 4: Create Firestore Database
+
+```bash
+# Create Firestore database (Native mode is default)
+gcloud firestore databases create --location=us-central1
+```
+
+### Step 5: Deploy Firestore Indexes
+
+Create `firestore.indexes.json`:
+
+```json
+{
+  "indexes": [
+    {
+      "collectionGroup": "meeting_participants",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "participant_email", "order": "ASCENDING" },
+        { "fieldPath": "start_time", "order": "DESCENDING" }
+      ]
+    }
+  ]
+}
+```
+
+Deploy:
+```bash
+firebase deploy --only firestore:indexes --project=zoom-mcp-oauth
+```
+
+### Step 6: Store Secrets
+
+```bash
+# Store Client Secret
+gcloud secrets create zoom-admin-client-secret
+echo -n "YOUR_CLIENT_SECRET" | gcloud secrets versions add zoom-admin-client-secret --data-file=-
+
+# Store Webhook Secret Token
+gcloud secrets create zoom-webhook-secret-token
+echo -n "YOUR_WEBHOOK_SECRET_TOKEN" | gcloud secrets versions add zoom-webhook-secret-token --data-file=-
+```
+
+### Step 7: Deploy Cloud Functions
+
+```bash
+# Deploy webhook handler
+gcloud functions deploy zoom-webhook-handler \
+  --runtime=nodejs20 \
+  --trigger-http \
+  --allow-unauthenticated \
+  --set-env-vars=ZOOM_ADMIN_ACCOUNT_ID=xxx,ZOOM_ADMIN_CLIENT_ID=yyy \
+  --set-secrets=ZOOM_ADMIN_CLIENT_SECRET=zoom-admin-client-secret:latest,ZOOM_WEBHOOK_SECRET_TOKEN=zoom-webhook-secret-token:latest \
+  --source=cloud-functions/
+
+# Deploy API endpoints
+gcloud functions deploy zoom-proxy-api \
+  --runtime=nodejs20 \
+  --trigger-http \
+  --allow-unauthenticated \
+  --set-env-vars=ZOOM_ADMIN_ACCOUNT_ID=xxx,ZOOM_ADMIN_CLIENT_ID=yyy \
+  --set-secrets=ZOOM_ADMIN_CLIENT_SECRET=zoom-admin-client-secret:latest \
+  --source=cloud-functions/
+```
+
+### Step 8: Deploy Cleanup Job
+
+```bash
+# Deploy cleanup function (authenticated only - no public access)
+gcloud functions deploy zoom-cleanup \
+  --runtime=nodejs20 \
+  --trigger-http \
+  --no-allow-unauthenticated \
+  --project=zoom-mcp-oauth
+
+# Grant Cloud Scheduler's service account permission to invoke the function
+gcloud functions add-invoker-policy-binding zoom-cleanup \
+  --member="serviceAccount:zoom-mcp-oauth@appspot.gserviceaccount.com" \
+  --project=zoom-mcp-oauth
+
+# Create Cloud Scheduler job (1st of month at 3am UTC)
+gcloud scheduler jobs create http zoom-cleanup-monthly \
+  --location=us-central1 \
+  --schedule="0 3 1 * *" \
+  --uri="https://us-central1-zoom-mcp-oauth.cloudfunctions.net/zoom-cleanup" \
+  --oidc-service-account-email=zoom-mcp-oauth@appspot.gserviceaccount.com \
+  --project=zoom-mcp-oauth
+```
+
+**Security**: The function uses `--no-allow-unauthenticated`, meaning only requests with valid IAM credentials can invoke it. Cloud Scheduler authenticates using OIDC tokens signed by the project's App Engine service account.
+
+### Step 9: Update Webhook URL in Zoom
+
+After deploying, update the webhook URL in Zoom app settings with the actual Cloud Function URL.
+
+### Step 10: Validate Webhook
+
+Zoom will send a validation challenge to your endpoint. The webhook handler must respond with:
+```json
+{
+  "plainToken": "<received_plain_token>",
+  "encryptedToken": "<hmac_sha256(plain_token, secret_token)>"
+}
+```
+
+### Credentials Summary
+
+| Credential | Source | Storage | Usage |
+|------------|--------|---------|-------|
+| Account ID | Zoom App | Env var `ZOOM_ADMIN_ACCOUNT_ID` | S2S OAuth token request |
+| Client ID | Zoom App | Env var `ZOOM_ADMIN_CLIENT_ID` | S2S OAuth token request |
+| Client Secret | Zoom App | Secret Manager | S2S OAuth token request |
+| Webhook Secret Token | Zoom App | Secret Manager | Webhook signature validation |
+
+---
+
 ## Implementation Plan
 
 ### Phase 1: Infrastructure Setup
-- [ ] Create Firestore database in `zoom-mcp-oauth` project
-- [ ] Create composite index on meeting_participants collection
-- [ ] Set up Secret Manager with admin Zoom credentials
-- [ ] Configure Zoom webhook for `meeting.ended`
+- [ ] Create Zoom S2S OAuth app with required scopes
+- [ ] Configure webhook subscription for `meeting.ended`
+- [ ] Create GCP project and enable APIs
+- [ ] Create Firestore database
+- [ ] Deploy Firestore indexes
+- [ ] Store secrets in Secret Manager
 
 ### Phase 2: Webhook Handler
 - [ ] Create Cloud Function `zoom-webhook-handler`
@@ -382,27 +650,35 @@ All endpoints tested and verified with admin scopes:
 - [ ] Keep direct API calls for user's own hosted meetings (fallback)
 
 ### Phase 5: Backfill
-- [ ] Create backfill worker Cloud Function
-- [ ] Run initial backfill for last 30-90 days
+- [ ] Create local backfill script (`scripts/backfill.ts`)
+- [ ] Run initial backfill for last 180 days
 - [ ] Verify data integrity
+
+### Phase 6: Cleanup Job
+- [ ] Create cleanup Cloud Function
+- [ ] Set up Cloud Scheduler for monthly execution
+- [ ] Test deletion logic
 
 ## API Endpoints Summary
 
 | Endpoint | Method | Auth | Purpose |
 |----------|--------|------|---------|
 | `/webhook` | POST | Zoom signature | Receive meeting.ended events |
-| `/list-meetings` | POST | User token | List meetings user participated in |
-| `/get-summary` | POST | User token | Get summary (with participation check) |
-| `/get-transcript` | POST | User token | Get transcript (with participation check) |
-| `/backfill` | POST | Admin only | Trigger historical data import |
+| `/list-meetings` | POST | User token | List meetings (participation filter; admins can query all) |
+| `/get-summary` | POST | User token | Get summary (participation check; admins bypass) |
+| `/get-transcript` | POST | User token | Get transcript (participation check; admins bypass) |
 
-## Open Questions
+## Decisions
 
-1. **Webhook setup**: Who has admin access to configure Zoom webhooks?
-2. **Historical depth**: How far back should we backfill? (30 days? 90 days? 1 year?)
-3. **Data retention**: Should we auto-delete old records? What's the retention policy?
-4. **Rate limits**: How to handle Zoom API rate limits during backfill?
-5. **Costs**: Firestore read/write costs - need to estimate based on meeting volume
+1. **Webhook setup**: Egor has admin access and will configure
+2. **Historical depth**: Backfill last 180 days
+3. **Data retention**: Keep 1 year of data. Monthly cleanup job deletes records older than 365 days
+4. **Rate limits**: Backfill script implements throttling (~10 req/sec with exponential backoff on 429)
+5. **Costs**: Within free tier (miniscule volume)
+6. **Admin mode**: Owners (role_id=0) and Admins (role_id=1) can query any meeting without participation check
+7. **Participation check**: Firestore-only (no Zoom API fallback). Requires reliable webhook + backfill coverage.
+8. **Host access**: Host always gets a participation record, even if they didn't join the meeting
+9. **Pre-registration & admin tools**: Deferred to MVP3 (see `docs/plans/mvp3.md`)
 
 ## Files to Create/Modify
 
@@ -414,13 +690,19 @@ cloud-functions/
 │   ├── list-meetings.ts        # Query participated meetings
 │   ├── get-summary.ts          # Fetch summary with auth
 │   ├── get-transcript.ts       # Fetch transcript with auth
-│   ├── backfill.ts             # Historical data import
+│   ├── cleanup.ts              # Monthly data retention cleanup
 │   ├── admin-client.ts         # Zoom client with admin creds
 │   └── utils/
 │       ├── validate-token.ts   # User token validation
 │       └── firestore.ts        # Firestore helpers
 ├── package.json
 └── tsconfig.json
+```
+
+### New Files (Local Scripts)
+```
+scripts/
+└── backfill.ts                 # Historical data import (run locally)
 ```
 
 ### Modified Files (MCP Client)
