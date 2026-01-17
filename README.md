@@ -24,7 +24,10 @@ Add to Claude Desktop config (`~/Library/Application Support/Claude/claude_deskt
   "mcpServers": {
     "zoom": {
       "command": "npx",
-      "args": ["-y", "@sweatco/zoom-mcp"]
+      "args": ["-y", "@sweatco/zoom-mcp"],
+      "env": {
+        "ZOOM_PROXY_URL": "https://your-proxy-url.cloudfunctions.net/zoom-proxy-api"
+      }
     }
   }
 }
@@ -54,6 +57,10 @@ Add to Claude Desktop config (`~/Library/Application Support/Claude/claude_deskt
 - "What were the action items from yesterday's standup?"
 - "Search my meetings for discussions about the product launch"
 - "Summarize my meeting from this morning"
+
+## Organization Proxy (MVP2)
+
+With `ZOOM_PROXY_URL` configured, you can access meetings you **attended** (not just hosted). This requires your organization admin to set up the proxy backend. Without the proxy, you can only access meetings you hosted.
 
 ## Transcript Sources
 
