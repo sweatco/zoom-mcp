@@ -146,13 +146,13 @@ interface MeetingParticipantRecord {
       "uuid": "abc123xyz==",
       "topic": "Team Standup",
       "host_id": "...",
-      "host_email": "manager@sweatco.in",
+      "host_email": "manager@example.com",
       "start_time": "2026-01-16T10:00:00Z",
       "end_time": "2026-01-16T10:30:00Z",
       "duration": 30,
       "participant": [
-        { "user_name": "Egor", "email": "egor@sweatco.in" },
-        { "user_name": "Victor", "email": "victor@sweatco.in" }
+        { "user_name": "Alice", "email": "alice@example.com" },
+        { "user_name": "Bob", "email": "bob@example.com" }
       ]
     }
   }
