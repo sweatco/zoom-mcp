@@ -1,0 +1,54 @@
+{
+  "name": "@sweatco/zoom-mcp",
+  "version": "0.1.0",
+  "description": "MCP server for Zoom - access meeting transcripts and AI summaries from Claude",
+  "type": "module",
+  "main": "dist/index.js",
+  "bin": {
+    "zoom-mcp": "dist/index.js"
+  },
+  "scripts": {
+    "build": "tsc",
+    "dev": "tsc --watch",
+    "start": "node dist/index.js",
+    "prepublishOnly": "npm run build",
+    "test:admin-api": "tsx scripts/test-admin-api.ts"
+  },
+  "keywords": [
+    "mcp",
+    "zoom",
+    "transcripts",
+    "claude",
+    "ai",
+    "meetings"
+  ],
+  "author": "Sweatco",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/sweatco/zoom-mcp.git"
+  },
+  "bugs": {
+    "url": "https://github.com/sweatco/zoom-mcp/issues"
+  },
+  "homepage": "https://github.com/sweatco/zoom-mcp#readme",
+  "engines": {
+    "node": ">=18.0.0"
+  },
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.0.0",
+    "keytar": "^7.9.0",
+    "open": "^10.1.0",
+    "zod": "^3.23.0"
+  },
+  "devDependencies": {
+    "@types/node": "^20.0.0",
+    "dotenv": "^16.4.0",
+    "tsx": "^4.7.0",
+    "typescript": "^5.0.0"
+  },
+  "files": [
+    "dist",
+    "README.md"
+  ]
+}
