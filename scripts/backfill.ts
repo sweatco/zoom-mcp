@@ -6,10 +6,14 @@
  *
  * Usage:
  *   npx tsx scripts/backfill.ts --from=2025-12-01 --to=2026-01-17
+ *   npx tsx scripts/backfill.ts --from=2025-12-01 --to=2026-01-17 --dry-run
+ *
+ * Options:
+ *   --dry-run  Test Zoom API connection without writing to Firestore
  *
  * Requires:
  *   - .env with ZOOM_ADMIN_ACCOUNT_ID, ZOOM_ADMIN_CLIENT_ID, ZOOM_ADMIN_CLIENT_SECRET
- *   - GOOGLE_APPLICATION_CREDENTIALS for Firestore access (or running on GCP)
+ *   - GOOGLE_APPLICATION_CREDENTIALS for Firestore access (or running on GCP) - not needed for --dry-run
  */
 
 import 'dotenv/config';
@@ -61,7 +65,7 @@ interface MeetingParticipantRecord {
   instance_uuid: string;
   meeting_id: string;
   topic: string;
-  host_email: string;
+  host_email?: string;
   start_time: string;
   end_time: string;
   duration_minutes: number;
@@ -70,7 +74,8 @@ interface MeetingParticipantRecord {
   has_summary: boolean;
   has_recording: boolean;
   indexed_at: string;
-  source: 'backfill';
+  source: 'webhook' | 'backfill' | 'preregistration' | 'manual_grant';
+  granted_by?: string;
 }
 
 // Token management
@@ -144,9 +149,11 @@ async function rateLimitedFetch(url: string, options?: RequestInit): Promise<Res
 }
 
 // Generate document ID
+// UUID is sanitized to replace / with _ since Firestore interprets / as path separator
 function generateDocumentId(instanceUuid: string, email: string): string {
+  const sanitizedUuid = instanceUuid.replace(/\//g, '_');
   const emailHash = createHash('sha256').update(email.toLowerCase()).digest('hex').slice(0, 8);
-  return `${instanceUuid}_${emailHash}`;
+  return `${sanitizedUuid}_${emailHash}`;
 }
 
 // Get all users in the account
@@ -258,8 +265,13 @@ async function getMeetingParticipants(instanceUuid: string): Promise<Participant
 }
 
 // Create participant records in Firestore
-async function createRecords(records: MeetingParticipantRecord[]): Promise<void> {
+async function createRecords(records: MeetingParticipantRecord[], dryRun: boolean): Promise<void> {
   if (records.length === 0) return;
+
+  if (dryRun) {
+    // In dry-run mode, just log what would be created
+    return;
+  }
 
   // Batch write (max 500 per batch)
   const batchSize = 500;
@@ -277,10 +289,13 @@ async function createRecords(records: MeetingParticipantRecord[]): Promise<void>
 }
 
 // Main backfill function
-async function backfill(fromDate: string, toDate: string): Promise<void> {
-  console.log(`\nStarting backfill from ${fromDate} to ${toDate}\n`);
+async function backfill(fromDate: string, toDate: string, dryRun: boolean): Promise<void> {
+  console.log(`\nStarting backfill from ${fromDate} to ${toDate}${dryRun ? ' (DRY RUN)' : ''}\n`);
 
   const users = await getAllUsers();
+
+  // Sort users by email
+  users.sort((a, b) => a.email.localeCompare(b.email));
 
   let totalMeetings = 0;
   let totalParticipants = 0;
@@ -293,10 +308,11 @@ async function backfill(fromDate: string, toDate: string): Promise<void> {
     const meetings = await getUserMeetings(user.id, fromDate, toDate);
 
     if (meetings.length === 0) {
+      console.log(`${userPrefix}: 0 meetings`);
       continue;
     }
 
-    console.log(`${userPrefix}: ${meetings.length} meetings`);
+    let userParticipants = 0;
 
     for (const meeting of meetings) {
       totalMeetings++;
@@ -352,9 +368,12 @@ async function backfill(fromDate: string, toDate: string): Promise<void> {
         });
       }
 
-      await createRecords(records);
+      await createRecords(records, dryRun);
       totalParticipants += records.length;
+      userParticipants += records.length;
     }
+
+    console.log(`${userPrefix}: ${meetings.length} meetings, ${userParticipants} participants`);
   }
 
   console.log(`\n=== Backfill Complete ===`);
@@ -364,16 +383,19 @@ async function backfill(fromDate: string, toDate: string): Promise<void> {
 }
 
 // Parse command line arguments
-function parseArgs(): { fromDate: string; toDate: string } {
+function parseArgs(): { fromDate: string; toDate: string; dryRun: boolean } {
   const args = process.argv.slice(2);
   let fromDate: string | undefined;
   let toDate: string | undefined;
+  let dryRun = false;
 
   for (const arg of args) {
     if (arg.startsWith('--from=')) {
       fromDate = arg.slice(7);
     } else if (arg.startsWith('--to=')) {
       toDate = arg.slice(5);
+    } else if (arg === '--dry-run') {
+      dryRun = true;
     }
   }
 
@@ -387,12 +409,12 @@ function parseArgs(): { fromDate: string; toDate: string } {
     console.log('No date range specified, using last 180 days');
   }
 
-  return { fromDate, toDate };
+  return { fromDate, toDate, dryRun };
 }
 
 // Main
-const { fromDate, toDate } = parseArgs();
-backfill(fromDate, toDate).catch((error) => {
+const { fromDate, toDate, dryRun } = parseArgs();
+backfill(fromDate, toDate, dryRun).catch((error) => {
   console.error('Backfill failed:', error);
   process.exit(1);
 });
