@@ -104,17 +104,25 @@ export class ProxyError extends Error {
 /**
  * List meetings from the proxy
  * Returns meetings where user was a participant (including those they didn't host)
+ * If userEmail is provided (admin only), returns meetings for that user instead
  */
 export async function listMeetingsFromProxy(
   fromDate: string,
   toDate: string,
-  limit: number = 50
+  limit: number = 50,
+  userEmail?: string
 ): Promise<MeetingInfo[]> {
-  const response = await proxyRequest<{ meetings: ProxyMeeting[] }>('list-meetings', {
+  const body: Record<string, unknown> = {
     from_date: fromDate,
     to_date: toDate,
     limit,
-  });
+  };
+
+  if (userEmail) {
+    body.user_email = userEmail;
+  }
+
+  const response = await proxyRequest<{ meetings: ProxyMeeting[] }>('list-meetings', body);
 
   return response.meetings.map((m) => ({
     meeting_id: m.meeting_id,

@@ -43,6 +43,10 @@ server.registerTool(
         .enum(['all', 'recorded', 'with_summary'])
         .optional()
         .describe('Filter by type: all, recorded, or with_summary. Defaults to all.'),
+      user_email: z
+        .string()
+        .optional()
+        .describe('Email of user to query meetings for. Admin only - requires Zoom admin privileges.'),
     },
   },
   async (args) => {

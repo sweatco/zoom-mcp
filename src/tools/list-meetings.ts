@@ -1,6 +1,6 @@
 import { z } from 'zod';
 import { getZoomClient } from '../zoom-client.js';
-import { isProxyConfigured, listMeetingsFromProxy } from '../proxy-client.js';
+import { isProxyConfigured, listMeetingsFromProxy, ProxyError } from '../proxy-client.js';
 import type { MeetingInfo } from '../types.js';
 
 export const listMeetingsSchema = z.object({
@@ -20,6 +20,10 @@ export const listMeetingsSchema = z.object({
     .enum(['all', 'recorded', 'with_summary'])
     .optional()
     .describe('Filter by type: all, recorded, or with_summary. Defaults to all.'),
+  user_email: z
+    .string()
+    .optional()
+    .describe('Email of user to query meetings for. Admin only - requires Zoom admin privileges.'),
 });
 
 export type ListMeetingsInput = z.infer<typeof listMeetingsSchema>;
@@ -93,7 +97,7 @@ export async function listMeetings(input: ListMeetingsInput): Promise<MeetingInf
   // This includes meetings they attended but didn't host
   if (isProxyConfigured()) {
     try {
-      const proxyMeetings = await listMeetingsFromProxy(fromDate, toDate);
+      const proxyMeetings = await listMeetingsFromProxy(fromDate, toDate, 50, input.user_email);
 
       // Apply filter
       let filteredMeetings = proxyMeetings;
@@ -108,9 +112,18 @@ export async function listMeetings(input: ListMeetingsInput): Promise<MeetingInf
 
       return filteredMeetings;
     } catch (error) {
+      // If admin access denied, throw the error instead of falling back
+      if (error instanceof ProxyError && error.status === 403) {
+        throw new Error('Admin access required to query other users\' meetings');
+      }
       // Proxy failed, fall back to direct API
       console.error('Proxy list-meetings failed, falling back to direct API:', error);
     }
+  }
+
+  // user_email requires proxy - can't fall back to direct API
+  if (input.user_email) {
+    throw new Error('Querying other users\' meetings requires the proxy to be configured');
   }
 
   // Direct Zoom API (only returns meetings user hosted)
