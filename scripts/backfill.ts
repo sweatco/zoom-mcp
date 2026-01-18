@@ -30,7 +30,8 @@ const REQUESTS_PER_SECOND = 8; // Stay under 10 to be safe
 const REQUEST_INTERVAL = 1000 / REQUESTS_PER_SECOND;
 
 // Firestore
-const db = new Firestore();
+// ignoreUndefinedProperties allows optional fields (like host_email) to be omitted
+const db = new Firestore({ ignoreUndefinedProperties: true });
 const COLLECTION_NAME = 'meeting_participants';
 
 // Types
