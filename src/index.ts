@@ -30,6 +30,7 @@ const server = new McpServer({
 server.registerTool(
   'list_meetings',
   {
+    title: 'List Meetings',
     description:
       'List your Zoom meetings. Can list past meetings (with transcripts/summaries), upcoming scheduled meetings, or currently live meetings.',
     inputSchema: {
@@ -68,6 +69,7 @@ server.registerTool(
 server.registerTool(
   'get_transcript',
   {
+    title: 'Get Transcript',
     description:
       'Get the full transcript for a Zoom meeting. ' +
       'Returns the verbatim transcript from cloud recording (VTT format), ' +
@@ -95,6 +97,7 @@ server.registerTool(
 server.registerTool(
   'get_summary',
   {
+    title: 'Get Summary',
     description:
       'Get the AI Companion meeting summary for a Zoom meeting. ' +
       'Returns the overview, key topics discussed, action items, and next steps.',
@@ -121,6 +124,7 @@ server.registerTool(
 server.registerTool(
   'get_meeting',
   {
+    title: 'Get Meeting',
     description:
       'Get detailed information about a Zoom meeting including participants, duration, ' +
       'and availability of recordings and summaries.',
@@ -147,6 +151,7 @@ server.registerTool(
 server.registerTool(
   'search_meetings',
   {
+    title: 'Search Meetings',
     description:
       'Search across your Zoom meeting transcripts and summaries for specific keywords or topics. ' +
       'Returns matching meetings with relevant excerpts.',
