@@ -30,7 +30,7 @@ Add to Claude Desktop config (`~/Library/Application Support/Claude/claude_deskt
       "command": "npx",
       "args": ["-y", "@sweatco/zoom-mcp"],
       "env": {
-        "ZOOM_CLIENT_ID": "12HSakNTRpGJCHXGOgbPFQ",
+        "ZOOM_CLIENT_ID": "xp0xI4xSSVSrzL0JRzOOgQ",
         "ZOOM_OAUTH_URL": "https://europe-west1-zoom-mcp-oauth.cloudfunctions.net/zoom-mcp-oauth"
       }
     }

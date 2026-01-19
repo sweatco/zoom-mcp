@@ -267,7 +267,7 @@ Share the MCP configuration with users. The config depends on whether you deploy
       "command": "npx",
       "args": ["-y", "@sweatco/zoom-mcp"],
       "env": {
-        "ZOOM_CLIENT_ID": "12HSakNTRpGJCHXGOgbPFQ",
+        "ZOOM_CLIENT_ID": "xp0xI4xSSVSrzL0JRzOOgQ",
         "ZOOM_OAUTH_URL": "https://europe-west1-zoom-mcp-oauth.cloudfunctions.net/zoom-mcp-oauth",
         "ZOOM_PROXY_URL": "https://$REGION-$PROJECT.cloudfunctions.net/zoom-proxy-api"
       }
