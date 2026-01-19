@@ -1,6 +1,6 @@
 {
   "name": "@sweatco/zoom-mcp",
-  "version": "0.1.2",
+  "version": "0.1.3",
   "description": "MCP server for Zoom - access meeting transcripts and AI summaries from Claude",
   "type": "module",
   "main": "dist/index.js",
