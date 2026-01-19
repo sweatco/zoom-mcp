@@ -7,12 +7,18 @@ export const ZOOM_CLIENT_ID = process.env.ZOOM_CLIENT_ID || '';
 // Must be set via environment variable
 export const OAUTH_URL = process.env.ZOOM_OAUTH_URL || '';
 
-if (!ZOOM_CLIENT_ID) {
-  throw new Error('ZOOM_CLIENT_ID environment variable is required');
-}
-
-if (!OAUTH_URL) {
-  throw new Error('ZOOM_OAUTH_URL environment variable is required');
+/**
+ * Validate that required environment variables are set.
+ * Called before operations that need them (not at import time,
+ * so --logout can work without env vars).
+ */
+export function validateConfig(): void {
+  if (!ZOOM_CLIENT_ID) {
+    throw new Error('ZOOM_CLIENT_ID environment variable is required');
+  }
+  if (!OAUTH_URL) {
+    throw new Error('ZOOM_OAUTH_URL environment variable is required');
+  }
 }
 
 export const ZOOM_OAUTH_AUTHORIZE_URL = 'https://zoom.us/oauth/authorize';

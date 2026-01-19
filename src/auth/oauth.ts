@@ -1,5 +1,6 @@
 import { createServer, IncomingMessage, ServerResponse } from 'http';
 import { URL } from 'url';
+import { randomBytes } from 'crypto';
 import open from 'open';
 import type { ZoomTokens } from '../types.js';
 import {
@@ -9,14 +10,13 @@ import {
   OAUTH_REDIRECT_PORT,
   OAUTH_REDIRECT_URI,
   ZOOM_SCOPES,
+  validateConfig,
 } from './constants.js';
 import { saveTokens, loadTokens, deleteTokens, isTokenExpired } from './token-store.js';
 
 // Generate a random state for CSRF protection
 function generateState(): string {
-  const array = new Uint8Array(32);
-  crypto.getRandomValues(array);
-  return Array.from(array, (b) => b.toString(16).padStart(2, '0')).join('');
+  return randomBytes(32).toString('hex');
 }
 
 // Exchange authorization code for tokens via proxy
@@ -207,6 +207,9 @@ export async function startOAuthFlow(): Promise<ZoomTokens> {
 
 // Get valid access token, refreshing or starting OAuth flow if needed
 export async function getValidAccessToken(): Promise<string> {
+  // Validate config before attempting any OAuth operations
+  validateConfig();
+
   let tokens = await loadTokens();
 
   if (!tokens) {
