@@ -5,7 +5,7 @@ import type { ZoomTokens } from '../types.js';
 import {
   ZOOM_CLIENT_ID,
   ZOOM_OAUTH_AUTHORIZE_URL,
-  OAUTH_PROXY_URL,
+  OAUTH_URL,
   OAUTH_REDIRECT_PORT,
   OAUTH_REDIRECT_URI,
   ZOOM_SCOPES,
@@ -21,7 +21,7 @@ function generateState(): string {
 
 // Exchange authorization code for tokens via proxy
 async function exchangeCodeForTokens(code: string): Promise<ZoomTokens> {
-  const response = await fetch(OAUTH_PROXY_URL, {
+  const response = await fetch(OAUTH_URL, {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
@@ -43,7 +43,7 @@ async function exchangeCodeForTokens(code: string): Promise<ZoomTokens> {
 
 // Refresh access token via proxy
 export async function refreshAccessToken(refreshToken: string): Promise<ZoomTokens> {
-  const response = await fetch(OAUTH_PROXY_URL, {
+  const response = await fetch(OAUTH_URL, {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',

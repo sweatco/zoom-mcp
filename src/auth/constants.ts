@@ -3,16 +3,16 @@
 // Zoom OAuth app Client ID (must be set via environment variable)
 export const ZOOM_CLIENT_ID = process.env.ZOOM_CLIENT_ID || '';
 
-// OAuth proxy URL (Cloud Function that securely holds the client secret)
+// OAuth URL (Cloud Function that securely holds the client secret)
 // Must be set via environment variable
-export const OAUTH_PROXY_URL = process.env.ZOOM_OAUTH_PROXY_URL || '';
+export const OAUTH_URL = process.env.ZOOM_OAUTH_URL || '';
 
 if (!ZOOM_CLIENT_ID) {
   throw new Error('ZOOM_CLIENT_ID environment variable is required');
 }
 
-if (!OAUTH_PROXY_URL) {
-  throw new Error('ZOOM_OAUTH_PROXY_URL environment variable is required');
+if (!OAUTH_URL) {
+  throw new Error('ZOOM_OAUTH_URL environment variable is required');
 }
 
 export const ZOOM_OAUTH_AUTHORIZE_URL = 'https://zoom.us/oauth/authorize';
