@@ -10,7 +10,7 @@
   "scripts": {
     "build": "tsc",
     "dev": "tsc --watch",
-    "deploy:oauth": "gcloud functions deploy zoom-mcp-oauth --gen2 --region=europe-west1 --runtime=nodejs20 --trigger-http --allow-unauthenticated --entry-point=oauth --source=. --set-secrets=ZOOM_CLIENT_SECRET=zoom-mcp-client-secret:latest --set-env-vars=ZOOM_CLIENT_ID=${ZOOM_CLIENT_ID}",
+    "deploy:oauth": "gcloud functions deploy zoom-mcp-oauth --gen2 --region=europe-west1 --runtime=nodejs20 --trigger-http --allow-unauthenticated --entry-point=oauth --source=. --set-secrets=ZOOM_CLIENT_SECRET=zoom-mcp-client-secret:latest --set-env-vars=ZOOM_CLIENT_ID=${ZOOM_CLIENT_ID} --set-build-env-vars=GOOGLE_NODE_RUN_SCRIPTS=",
     "deploy:webhook": "gcloud functions deploy zoom-webhook-handler --gen2 --region=europe-west1 --runtime=nodejs20 --trigger-http --allow-unauthenticated --entry-point=webhookHandler --source=. --set-env-vars=ZOOM_ADMIN_ACCOUNT_ID=${ZOOM_ADMIN_ACCOUNT_ID},ZOOM_ADMIN_CLIENT_ID=${ZOOM_ADMIN_CLIENT_ID} --set-secrets=ZOOM_ADMIN_CLIENT_SECRET=zoom-admin-client-secret:latest,ZOOM_WEBHOOK_SECRET_TOKEN=zoom-webhook-secret-token:latest",
     "deploy:api": "gcloud functions deploy zoom-proxy-api --gen2 --region=europe-west1 --runtime=nodejs20 --trigger-http --allow-unauthenticated --entry-point=proxyApi --source=. --set-env-vars=ZOOM_ADMIN_ACCOUNT_ID=${ZOOM_ADMIN_ACCOUNT_ID},ZOOM_ADMIN_CLIENT_ID=${ZOOM_ADMIN_CLIENT_ID} --set-secrets=ZOOM_ADMIN_CLIENT_SECRET=zoom-admin-client-secret:latest",
     "deploy:cleanup": "gcloud functions deploy zoom-cleanup --gen2 --region=europe-west1 --runtime=nodejs20 --trigger-http --no-allow-unauthenticated --entry-point=cleanup --source=."

@@ -123,6 +123,9 @@ functions.http('cleanup', async (req: Request, res: Response) => {
  *
  * Securely exchanges OAuth codes for tokens without exposing client secret.
  * URL: /zoom-mcp-oauth
+ *
+ * Also handles OAuth callback redirect:
+ * GET /zoom-mcp-oauth/callback - Receives Zoom redirect, forwards to localhost
  */
 functions.http('oauth', async (req: Request, res: Response) => {
   // Handle CORS preflight
@@ -132,6 +135,10 @@ functions.http('oauth', async (req: Request, res: Response) => {
     return;
   }
 
-  res.set(corsHeaders);
+  // Don't set CORS headers for callback redirects (they're browser navigations, not AJAX)
+  if (req.method !== 'GET') {
+    res.set(corsHeaders);
+  }
+
   await handleOAuth(req, res);
 });

@@ -25,7 +25,11 @@ export const ZOOM_OAUTH_AUTHORIZE_URL = 'https://zoom.us/oauth/authorize';
 export const ZOOM_API_BASE_URL = 'https://api.zoom.us/v2';
 
 export const OAUTH_REDIRECT_PORT = 8888;
-export const OAUTH_REDIRECT_URI = `http://localhost:${OAUTH_REDIRECT_PORT}/callback`;
+
+// For production Zoom apps that require HTTPS redirect URLs,
+// the cloud function callback receives the OAuth redirect from Zoom
+// and forwards it to the local MCP client on localhost.
+export const OAUTH_REDIRECT_URI = `${OAUTH_URL}/callback`;
 
 // Required OAuth scopes for all MCP features
 // Using granular scopes (Zoom's new naming convention)
