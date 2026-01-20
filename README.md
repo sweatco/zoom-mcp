@@ -28,15 +28,13 @@ Add to Claude Desktop config (`~/Library/Application Support/Claude/claude_deskt
   "mcpServers": {
     "zoom": {
       "command": "npx",
-      "args": ["-y", "@sweatco/zoom-mcp"],
-      "env": {
-        "ZOOM_CLIENT_ID": "xp0xI4xSSVSrzL0JRzOOgQ",
-        "ZOOM_OAUTH_URL": "https://europe-west1-zoom-mcp-oauth.cloudfunctions.net/zoom-mcp-oauth"
-      }
+      "args": ["-y", "@sweatco/zoom-mcp"]
     }
   }
 }
 ```
+
+> **Note:** Requires Node.js 18+. If Claude Desktop can't find `npx`, use the full path (run `which npx` to find it).
 
 ### First Use
 
@@ -112,14 +110,14 @@ Quick overview:
       "command": "npx",
       "args": ["-y", "@sweatco/zoom-mcp"],
       "env": {
-        "ZOOM_CLIENT_ID": "your-zoom-client-id",
-        "ZOOM_OAUTH_URL": "https://REGION-PROJECT.cloudfunctions.net/zoom-mcp-oauth",
         "ZOOM_PROXY_URL": "https://REGION-PROJECT.cloudfunctions.net/zoom-proxy-api"
       }
     }
   }
 }
 ```
+
+If you deployed your own OAuth function, also set `ZOOM_CLIENT_ID` and `ZOOM_OAUTH_URL`.
 
 ## Available Tools
 
@@ -220,7 +218,13 @@ npx . --logout
 cd cloud-functions
 npm install
 npm run build
-npm run deploy:oauth     # Deploy OAuth function
+
+# Set required env vars before deploying (only if deploying your own)
+export ZOOM_CLIENT_ID=your-user-oauth-client-id        # For OAuth function (optional)
+export ZOOM_ADMIN_ACCOUNT_ID=your-admin-account-id     # For proxy functions
+export ZOOM_ADMIN_CLIENT_ID=your-admin-client-id       # For proxy functions
+
+npm run deploy:oauth     # Deploy OAuth function (optional - can use hosted)
 npm run deploy:webhook   # Deploy webhook handler
 npm run deploy:api       # Deploy proxy API
 npm run deploy:cleanup   # Deploy cleanup job

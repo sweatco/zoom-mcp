@@ -1,23 +1,26 @@
 // OAuth Configuration
 
-// Zoom OAuth app Client ID (must be set via environment variable)
-export const ZOOM_CLIENT_ID = process.env.ZOOM_CLIENT_ID || '';
+// Default hosted OAuth service provided by Sweatco
+const DEFAULT_ZOOM_CLIENT_ID = 'xp0xI4xSSVSrzL0JRzOOgQ';
+const DEFAULT_OAUTH_URL = 'https://europe-west1-zoom-mcp-oauth.cloudfunctions.net/zoom-mcp-oauth';
+
+// Zoom OAuth app Client ID (uses Sweatco's hosted service by default)
+export const ZOOM_CLIENT_ID = process.env.ZOOM_CLIENT_ID || DEFAULT_ZOOM_CLIENT_ID;
 
 // OAuth URL (Cloud Function that securely holds the client secret)
-// Must be set via environment variable
-export const OAUTH_URL = process.env.ZOOM_OAUTH_URL || '';
+export const OAUTH_URL = process.env.ZOOM_OAUTH_URL || DEFAULT_OAUTH_URL;
 
 /**
- * Validate that required environment variables are set.
+ * Validate that OAuth configuration is valid.
  * Called before operations that need them (not at import time,
  * so --logout can work without env vars).
  */
 export function validateConfig(): void {
   if (!ZOOM_CLIENT_ID) {
-    throw new Error('ZOOM_CLIENT_ID environment variable is required');
+    throw new Error('ZOOM_CLIENT_ID is not configured');
   }
   if (!OAUTH_URL) {
-    throw new Error('ZOOM_OAUTH_URL environment variable is required');
+    throw new Error('ZOOM_OAUTH_URL is not configured');
   }
 }
 

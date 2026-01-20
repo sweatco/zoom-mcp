@@ -153,18 +153,12 @@ cd cloud-functions
 npm install
 npm run build
 
-gcloud functions deploy zoom-mcp-oauth \
-  --gen2 \
-  --runtime=nodejs20 \
-  --region=$REGION \
-  --trigger-http \
-  --allow-unauthenticated \
-  --set-env-vars="ZOOM_CLIENT_ID=YOUR_USER_OAUTH_CLIENT_ID" \
-  --set-secrets="ZOOM_CLIENT_SECRET=zoom-client-secret:latest" \
-  --source=.
+# Set your User OAuth Client ID and deploy
+export ZOOM_CLIENT_ID=your-user-oauth-client-id
+npm run deploy:oauth
 ```
 
-4. After deployment, the CLI will show the function URL (e.g., `https://us-central1-your-project-id.cloudfunctions.net/zoom-mcp-oauth`)
+4. After deployment, the CLI will show the function URL (e.g., `https://europe-west1-your-project-id.cloudfunctions.net/zoom-mcp-oauth`)
    - Use this URL as `ZOOM_OAUTH_URL` in MCP client config (Step 12)
 
 ## Step 8: Deploy Proxy Functions
@@ -178,36 +172,18 @@ npm run build
 
 Deploy the proxy functions:
 ```bash
+# Set your S2S OAuth credentials
+export ZOOM_ADMIN_ACCOUNT_ID=your-account-id
+export ZOOM_ADMIN_CLIENT_ID=your-admin-client-id
+
 # Deploy webhook handler
-gcloud functions deploy zoom-webhook-handler \
-  --gen2 \
-  --runtime=nodejs20 \
-  --region=$REGION \
-  --trigger-http \
-  --allow-unauthenticated \
-  --set-env-vars="ZOOM_ADMIN_ACCOUNT_ID=YOUR_ACCOUNT_ID,ZOOM_ADMIN_CLIENT_ID=YOUR_ADMIN_CLIENT_ID" \
-  --set-secrets="ZOOM_ADMIN_CLIENT_SECRET=zoom-admin-client-secret:latest,ZOOM_WEBHOOK_SECRET_TOKEN=zoom-webhook-secret-token:latest" \
-  --source=.
+npm run deploy:webhook
 
 # Deploy proxy API
-gcloud functions deploy zoom-proxy-api \
-  --gen2 \
-  --runtime=nodejs20 \
-  --region=$REGION \
-  --trigger-http \
-  --allow-unauthenticated \
-  --set-env-vars="ZOOM_ADMIN_ACCOUNT_ID=YOUR_ACCOUNT_ID,ZOOM_ADMIN_CLIENT_ID=YOUR_ADMIN_CLIENT_ID" \
-  --set-secrets="ZOOM_ADMIN_CLIENT_SECRET=zoom-admin-client-secret:latest" \
-  --source=.
+npm run deploy:api
 
 # Deploy cleanup job
-gcloud functions deploy zoom-cleanup \
-  --gen2 \
-  --runtime=nodejs20 \
-  --region=$REGION \
-  --trigger-http \
-  --no-allow-unauthenticated \
-  --source=.
+npm run deploy:cleanup
 ```
 
 ## Step 9: Update Zoom Webhook URL
@@ -257,9 +233,9 @@ npx tsx scripts/backfill.ts --from=2025-09-01 --to=2025-09-30
 
 ## Step 12: Configure MCP Clients
 
-Share the MCP configuration with users. The config depends on whether you deployed your own OAuth function (Step 7 Option B) or use Sweatco's hosted one (Option A).
+Share the MCP configuration with users. The defaults use Sweatco's hosted OAuth service, so you only need to set `ZOOM_PROXY_URL`.
 
-**If using Sweatco's hosted OAuth (Option A):**
+**If using Sweatco's hosted OAuth (Option A - recommended):**
 ```json
 {
   "mcpServers": {
@@ -267,8 +243,6 @@ Share the MCP configuration with users. The config depends on whether you deploy
       "command": "npx",
       "args": ["-y", "@sweatco/zoom-mcp"],
       "env": {
-        "ZOOM_CLIENT_ID": "xp0xI4xSSVSrzL0JRzOOgQ",
-        "ZOOM_OAUTH_URL": "https://europe-west1-zoom-mcp-oauth.cloudfunctions.net/zoom-mcp-oauth",
         "ZOOM_PROXY_URL": "https://$REGION-$PROJECT.cloudfunctions.net/zoom-proxy-api"
       }
     }
