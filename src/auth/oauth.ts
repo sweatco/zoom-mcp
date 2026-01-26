@@ -12,7 +12,7 @@ import {
   ZOOM_SCOPES,
   validateConfig,
 } from './constants.js';
-import { saveTokens, loadTokens, deleteTokens, isTokenExpired } from './token-store.js';
+import { saveTokens, loadTokens, deleteTokens, isTokenExpired, setLastTokenSource, getLastTokenSource } from './token-store.js';
 
 // Generate a random state for CSRF protection
 function generateState(): string {
@@ -211,23 +211,38 @@ export async function getValidAccessToken(): Promise<string> {
   validateConfig();
 
   let tokens = await loadTokens();
+  const tokenSource = getLastTokenSource();
 
   if (!tokens) {
     // No tokens stored, start OAuth flow
     tokens = await startOAuthFlow();
+    setLastTokenSource('oauth');
     return tokens.access_token;
   }
 
-  if (isTokenExpired(tokens)) {
-    // Token expired, try to refresh
+  // If loaded from env refresh token, always refresh to get valid access token
+  const needsRefresh = isTokenExpired(tokens) || tokenSource === 'env_refresh_token';
+
+  if (needsRefresh) {
+    // Token expired or from env, try to refresh
     try {
       tokens = await refreshAccessToken(tokens.refresh_token);
       await saveTokens(tokens);
+      // Keep original source if it was env, otherwise mark as refreshed from stored
       return tokens.access_token;
     } catch {
+      // Refresh failed - if we have ZOOM_REFRESH_TOKEN env var, don't fall back to OAuth
+      // as we're likely in headless mode
+      if (process.env.ZOOM_REFRESH_TOKEN) {
+        throw new Error(
+          'Failed to refresh token from ZOOM_REFRESH_TOKEN. ' +
+          'The token may be invalid or expired. Please generate a new one with --export-token.'
+        );
+      }
       // Refresh failed, start new OAuth flow
       await deleteTokens();
       tokens = await startOAuthFlow();
+      setLastTokenSource('oauth');
       return tokens.access_token;
     }
   }

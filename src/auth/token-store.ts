@@ -7,6 +7,18 @@ import { KEYCHAIN_SERVICE, KEYCHAIN_ACCOUNT, CONFIG_DIR, TOKENS_FILE } from './c
 // Try to import keytar, but don't fail if not available
 let keytar: typeof import('keytar') | null = null;
 
+// Track where tokens were loaded from (for debugging)
+export type TokenSource = 'keychain' | 'file' | 'env_refresh_token' | 'oauth' | null;
+let lastTokenSource: TokenSource = null;
+
+export function getLastTokenSource(): TokenSource {
+  return lastTokenSource;
+}
+
+export function setLastTokenSource(source: TokenSource): void {
+  lastTokenSource = source;
+}
+
 async function loadKeytar(): Promise<typeof import('keytar') | null> {
   if (keytar !== null) return keytar;
   try {
@@ -81,11 +93,13 @@ export async function saveTokens(tokens: ZoomTokens): Promise<void> {
 }
 
 export async function loadTokens(): Promise<ZoomTokens | null> {
+  // 1. Try keychain first
   const kt = await loadKeytar();
   if (kt) {
     try {
       const stored = await kt.getPassword(KEYCHAIN_SERVICE, KEYCHAIN_ACCOUNT);
       if (stored) {
+        lastTokenSource = 'keychain';
         return JSON.parse(stored) as ZoomTokens;
       }
     } catch {
@@ -93,8 +107,30 @@ export async function loadTokens(): Promise<ZoomTokens | null> {
     }
   }
 
-  // Fallback to file storage
-  return loadFromFile();
+  // 2. Try file storage
+  const fileTokens = loadFromFile();
+  if (fileTokens) {
+    lastTokenSource = 'file';
+    return fileTokens;
+  }
+
+  // 3. Check for ZOOM_REFRESH_TOKEN env var (for headless bootstrap)
+  const envRefreshToken = process.env.ZOOM_REFRESH_TOKEN;
+  if (envRefreshToken) {
+    // Return a partial token object - caller must refresh to get access_token
+    lastTokenSource = 'env_refresh_token';
+    return {
+      access_token: '', // Empty - must be refreshed
+      refresh_token: envRefreshToken,
+      token_type: 'Bearer',
+      expires_in: 0,
+      scope: '',
+      expires_at: 0, // Expired - forces refresh
+    };
+  }
+
+  lastTokenSource = null;
+  return null;
 }
 
 export async function deleteTokens(): Promise<void> {

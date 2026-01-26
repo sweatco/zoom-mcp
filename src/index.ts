@@ -3,7 +3,9 @@
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js';
 import { z } from 'zod';
-import { logout, getValidAccessToken } from './auth/oauth.js';
+import { logout, getValidAccessToken, startOAuthFlow } from './auth/oauth.js';
+import { loadTokens, getLastTokenSource, type TokenSource } from './auth/token-store.js';
+import { ZOOM_CLIENT_ID, OAUTH_URL } from './auth/constants.js';
 import { listMeetings } from './tools/list-meetings.js';
 import { getTranscript } from './tools/get-transcript.js';
 import { getSummary } from './tools/get-summary.js';
@@ -13,6 +15,35 @@ import { searchMeetings } from './tools/search.js';
 // Handle --logout flag
 if (process.argv.includes('--logout')) {
   await logout();
+  process.exit(0);
+}
+
+// Handle --export-token flag (for headless setup)
+if (process.argv.includes('--export-token')) {
+  // First try to load existing tokens
+  let tokens = await loadTokens();
+
+  if (!tokens || !tokens.refresh_token) {
+    // No tokens stored, start OAuth flow to get them
+    console.error('No existing tokens found. Starting OAuth flow...\n');
+    tokens = await startOAuthFlow();
+  }
+
+  console.log('\n=== Zoom Refresh Token ===\n');
+  console.log('Add this to your MCP config for headless environments:\n');
+  console.log(JSON.stringify({
+    mcpServers: {
+      zoom: {
+        command: 'npx',
+        args: ['-y', '@sweatco/zoom-mcp'],
+        env: {
+          ZOOM_REFRESH_TOKEN: tokens.refresh_token,
+        },
+      },
+    },
+  }, null, 2));
+  console.log('\nOr set the environment variable directly:');
+  console.log(`\nZOOM_REFRESH_TOKEN=${tokens.refresh_token}\n`);
   process.exit(0);
 }
 
@@ -166,6 +197,60 @@ server.registerTool(
       const result = await searchMeetings(args);
       return {
         content: [{ type: 'text', text: JSON.stringify(result, null, 2) }],
+      };
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      return {
+        content: [{ type: 'text', text: `Error: ${message}` }],
+        isError: true,
+      };
+    }
+  }
+);
+
+// Health/debug tool for troubleshooting
+server.registerTool(
+  'debug_status',
+  {
+    title: 'Debug Status',
+    description:
+      'Get debug information about the Zoom MCP server configuration and authentication status. ' +
+      'Useful for troubleshooting connection issues in headless environments.',
+    inputSchema: {},
+  },
+  async () => {
+    try {
+      const tokens = await loadTokens();
+      const tokenSource = getLastTokenSource();
+      const proxyUrl = process.env.ZOOM_PROXY_URL || null;
+
+      const status = {
+        authentication: {
+          token_source: tokenSource,
+          has_access_token: !!tokens?.access_token,
+          has_refresh_token: !!tokens?.refresh_token,
+          token_expires_at: tokens?.expires_at
+            ? new Date(tokens.expires_at).toISOString()
+            : null,
+          token_expired: tokens?.expires_at
+            ? Date.now() > tokens.expires_at
+            : null,
+          env_refresh_token_set: !!process.env.ZOOM_REFRESH_TOKEN,
+        },
+        configuration: {
+          oauth_client_id: ZOOM_CLIENT_ID ? `${ZOOM_CLIENT_ID.slice(0, 8)}...` : null,
+          oauth_url: OAUTH_URL,
+          proxy_url: proxyUrl,
+          proxy_enabled: !!proxyUrl,
+        },
+        environment: {
+          node_version: process.version,
+          platform: process.platform,
+        },
+      };
+
+      return {
+        content: [{ type: 'text', text: JSON.stringify(status, null, 2) }],
       };
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
