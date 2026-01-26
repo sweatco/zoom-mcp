@@ -227,8 +227,14 @@ export async function getValidAccessToken(): Promise<string> {
     // Token expired or from env, try to refresh
     try {
       tokens = await refreshAccessToken(tokens.refresh_token);
-      await saveTokens(tokens);
-      // Keep original source if it was env, otherwise mark as refreshed from stored
+      // Try to save tokens, but don't fail if save doesn't work
+      // (e.g., no write permissions on headless server)
+      try {
+        await saveTokens(tokens);
+      } catch (saveError) {
+        console.error('Warning: Could not save tokens:', saveError instanceof Error ? saveError.message : saveError);
+        // Continue anyway - we have valid tokens in memory
+      }
       return tokens.access_token;
     } catch {
       // Refresh failed - if we have ZOOM_REFRESH_TOKEN env var, don't fall back to OAuth
