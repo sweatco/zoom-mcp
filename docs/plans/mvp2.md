@@ -566,25 +566,27 @@ echo -n "YOUR_WEBHOOK_SECRET_TOKEN" | gcloud secrets versions add zoom-webhook-s
 
 ### Step 7: Deploy Cloud Functions
 
-```bash
-# Deploy webhook handler
-gcloud functions deploy zoom-webhook-handler \
-  --runtime=nodejs20 \
-  --trigger-http \
-  --allow-unauthenticated \
-  --set-env-vars=ZOOM_ADMIN_ACCOUNT_ID=xxx,ZOOM_ADMIN_CLIENT_ID=yyy \
-  --set-secrets=ZOOM_ADMIN_CLIENT_SECRET=zoom-admin-client-secret:latest,ZOOM_WEBHOOK_SECRET_TOKEN=zoom-webhook-secret-token:latest \
-  --source=cloud-functions/
+Use the npm scripts rather than raw `gcloud` commands. They pin
+`--project=zoom-mcp-oauth` and `--region=europe-west1`, so a deploy cannot land in
+whichever project happens to be active in your local gcloud config, and they abort
+if the Zoom credentials are not exported (otherwise the function is deployed with
+empty `ZOOM_ADMIN_*` values, which breaks it silently).
 
-# Deploy API endpoints
-gcloud functions deploy zoom-proxy-api \
-  --runtime=nodejs20 \
-  --trigger-http \
-  --allow-unauthenticated \
-  --set-env-vars=ZOOM_ADMIN_ACCOUNT_ID=xxx,ZOOM_ADMIN_CLIENT_ID=yyy \
-  --set-secrets=ZOOM_ADMIN_CLIENT_SECRET=zoom-admin-client-secret:latest \
-  --source=cloud-functions/
+```bash
+# Authenticate as an account with deploy rights on the project
+gcloud auth login <you>@sweatco.in
+
+cd cloud-functions
+set -a && . ../.env && set +a   # required: the deploy scripts read these
+npm run build
+
+npm run deploy:webhook
+npm run deploy:api
 ```
+
+`gcloud functions deploy` creates the function when it does not already exist, so a
+deploy pointed at the wrong project silently creates a second copy there instead of
+failing. This is why the project is pinned in the scripts.
 
 ### Step 8: Deploy Cleanup Job
 
