@@ -587,6 +587,10 @@ If `ZOOM_ADMIN_ACCOUNT_ID` / `ZOOM_ADMIN_CLIENT_ID` cannot be resolved, the scri
 aborts before calling gcloud rather than deploying the function with empty
 credentials.
 
+**Runtime:** the deploy scripts pin `--runtime=nodejs24`. Node 20 was decommissioned
+by Cloud Functions on 2026-10-30. `engines.node` stays at `>=20` deliberately - it must
+not exclude the pinned runtime, or the build fails on a conflict.
+
 **Why `--set-build-env-vars=GOOGLE_NODE_RUN_SCRIPTS=` is on every deploy script:**
 `cloud-functions/.gcloudignore` excludes `src/`, so only the compiled `dist/` is
 uploaded. Without that flag the Cloud Build buildpack tries to run `npm run build`
