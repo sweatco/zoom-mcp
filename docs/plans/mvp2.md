@@ -566,27 +566,38 @@ echo -n "YOUR_WEBHOOK_SECRET_TOKEN" | gcloud secrets versions add zoom-webhook-s
 
 ### Step 7: Deploy Cloud Functions
 
-Use the npm scripts rather than raw `gcloud` commands. They pin
-`--project=zoom-mcp-oauth` and `--region=europe-west1`, so a deploy cannot land in
-whichever project happens to be active in your local gcloud config, and they abort
-if the Zoom credentials are not exported (otherwise the function is deployed with
-empty `ZOOM_ADMIN_*` values, which breaks it silently).
+Each function deploys with a single command. The script loads `.env` from the repo
+root, rebuilds `dist/`, and deploys:
 
 ```bash
-# Authenticate as an account with deploy rights on the project
+# once, if your gcloud credentials have expired
 gcloud auth login <you>@sweatco.in
 
 cd cloud-functions
-set -a && . ../.env && set +a   # required: the deploy scripts read these
-npm run build
-
-npm run deploy:webhook
-npm run deploy:api
+npm ci
+npm run deploy:api        # or deploy:webhook / deploy:oauth / deploy:cleanup
 ```
 
-`gcloud functions deploy` creates the function when it does not already exist, so a
-deploy pointed at the wrong project silently creates a second copy there instead of
-failing. This is why the project is pinned in the scripts.
+The scripts pin `--project=zoom-mcp-oauth` and `--region=europe-west1`, so a deploy
+cannot land in whichever project happens to be active in your local gcloud config.
+`gcloud functions deploy` *creates* a function when it does not exist, so an
+unpinned deploy silently creates a second copy elsewhere instead of failing.
+
+If `ZOOM_ADMIN_ACCOUNT_ID` / `ZOOM_ADMIN_CLIENT_ID` cannot be resolved, the script
+aborts before calling gcloud rather than deploying the function with empty
+credentials.
+
+**Why `--set-build-env-vars=GOOGLE_NODE_RUN_SCRIPTS=` is on every deploy script:**
+`cloud-functions/.gcloudignore` excludes `src/`, so only the compiled `dist/` is
+uploaded. Without that flag the Cloud Build buildpack tries to run `npm run build`
+remotely, `tsc` finds no sources, and the deploy fails with:
+
+```
+error TS18003: No inputs were found in config file '/workspace/tsconfig.json'
+```
+
+This is why the scripts build locally first. If you would rather compile in Cloud
+Build, remove `src/` from `.gcloudignore` and drop the flag - but do both together.
 
 ### Step 8: Deploy Cleanup Job
 
