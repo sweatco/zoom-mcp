@@ -419,8 +419,25 @@ meeting:read:list_past_participants:admin   - Get participants for any meeting
 meeting:read:summary:admin                  - Get AI summary for any meeting
 cloud_recording:read:list_user_recordings:admin   - List recordings by user
 cloud_recording:read:list_recording_files:admin   - Get recording files/transcripts
+cloud_recording:read:meeting_transcript:admin     - Get AI Companion transcript (non-recorded meetings)
 report:read:user:admin                      - Access user reports
 report:read:list_history_meetings:admin     - List all meetings hosted by a user
+```
+
+**Note on `cloud_recording:read:meeting_transcript:admin`:** this one is easy to miss in
+the Marketplace scope picker. The endpoint is `/meetings/{uuid}/transcript`, but the scope
+lives under the **Cloud Recording** category, not Meeting. Search the picker for
+`transcript` rather than the full granular scope name, and finish the app wizard so the
+change is applied. Without it Zoom returns HTTP 400 code 4711, and the proxy silently
+degrades to the AI summary instead of returning a verbatim transcript.
+
+Verify what the S2S app actually holds:
+
+```bash
+set -a && . ./.env && set +a && curl -s -X POST "https://zoom.us/oauth/token" \
+  -u "$ZOOM_ADMIN_CLIENT_ID:$ZOOM_ADMIN_CLIENT_SECRET" \
+  -d "grant_type=account_credentials&account_id=$ZOOM_ADMIN_ACCOUNT_ID" \
+  | python3 -c "import json,sys; print(json.load(sys.stdin).get('scope','').split())"
 ```
 
 ## Zoom API Endpoints Reference
@@ -447,6 +464,7 @@ All endpoints tested and verified with admin scopes:
 | `/v2/past_meetings/{instanceUuid}/participants` | GET | Get meeting participants |
 | `/v2/meetings/{instanceUuid}/meeting_summary` | GET | Get AI Companion summary |
 | `/v2/meetings/{instanceUuid}/recordings` | GET | Get recording files including VTT transcript |
+| `/v2/meetings/{instanceUuid}/transcript` | GET | Get AI Companion transcript (works when there is no cloud recording) |
 
 ### Reports (for listing hosted meetings)
 | Endpoint | Method | Purpose |

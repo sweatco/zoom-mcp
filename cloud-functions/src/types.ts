@@ -154,6 +154,19 @@ export interface ZoomRecordingResponse {
   recording_files: ZoomRecordingFile[];
 }
 
+/**
+ * AI Companion transcript metadata (GET /meetings/{uuid}/transcript).
+ * Available for meetings that were NOT cloud-recorded but had AI Companion on.
+ */
+export interface ZoomAITranscriptResponse {
+  meeting_id: string;
+  meeting_topic?: string;
+  host_id?: string;
+  transcript_created_time?: string;
+  can_download?: boolean;
+  download_url?: string;
+}
+
 // ============ API Request/Response Types ============
 
 export interface ListMeetingsRequest {

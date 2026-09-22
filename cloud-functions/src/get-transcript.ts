@@ -9,7 +9,13 @@ import type { Request, Response } from '@google-cloud/functions-framework';
 import type { GetContentRequest, GetTranscriptResponse } from './types.js';
 import { validateUserToken, extractBearerToken } from './utils/validate-token.js';
 import { checkParticipation } from './utils/firestore.js';
-import { getMeetingRecordings, downloadTranscript, getMeetingSummary } from './utils/admin-client.js';
+import {
+  getMeetingRecordings,
+  downloadTranscript,
+  getMeetingSummary,
+  getAICompanionTranscript,
+  MissingScopeError,
+} from './utils/admin-client.js';
 
 /**
  * Parse VTT content to plain text with speaker labels
@@ -137,7 +143,39 @@ export async function handleGetTranscript(req: Request, res: Response): Promise<
       return;
     }
   } catch (error) {
-    console.log('No recording transcript available, trying AI summary fallback');
+    const message = error instanceof Error ? error.message : String(error);
+    console.log(`No cloud-recording transcript for ${params.instance_uuid}: ${message}`);
+  }
+
+  // Second: AI Companion transcript. Meetings that were never cloud-recorded
+  // still have a verbatim transcript when AI Companion was enabled, so this
+  // must be tried before falling back to the (non-verbatim) summary.
+  try {
+    const aiTranscript = await getAICompanionTranscript(params.instance_uuid);
+
+    if (aiTranscript?.download_url && aiTranscript.can_download !== false) {
+      const content = await downloadTranscript(aiTranscript.download_url);
+      const parsedText = content.trimStart().startsWith('WEBVTT')
+        ? parseVttToText(content)
+        : content;
+
+      if (parsedText.trim()) {
+        const response: GetTranscriptResponse = {
+          transcript: parsedText,
+          source: 'recording',
+        };
+        res.json(response);
+        return;
+      }
+    }
+  } catch (error) {
+    if (error instanceof MissingScopeError) {
+      // Actionable config problem, not a missing transcript - make it loud.
+      console.error(`AI Companion transcript unavailable: ${error.message}`);
+    } else {
+      const message = error instanceof Error ? error.message : String(error);
+      console.log(`No AI Companion transcript for ${params.instance_uuid}: ${message}`);
+    }
   }
 
   // Fallback to AI summary
