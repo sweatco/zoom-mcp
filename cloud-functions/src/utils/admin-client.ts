@@ -6,6 +6,7 @@
  */
 
 import type {
+  ZoomAITranscriptResponse,
   ZoomMeetingSummary,
   ZoomPastMeetingResponse,
   ZoomParticipantsResponse,
@@ -163,6 +164,65 @@ export async function getMeetingRecordings(instanceUuid: string): Promise<ZoomRe
   }
 
   return response.json() as Promise<ZoomRecordingResponse>;
+}
+
+/**
+ * Error thrown when the S2S app lacks a scope the endpoint requires.
+ * Callers treat this as "unavailable" and fall through, rather than failing the request.
+ */
+export class MissingScopeError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = 'MissingScopeError';
+  }
+}
+
+/**
+ * Get the AI Companion transcript for a meeting.
+ *
+ * This is a separate source from cloud recordings: meetings that were never
+ * cloud-recorded still have a verbatim transcript when AI Companion was on.
+ * Requires the `cloud_recording:read:meeting_transcript:admin` scope on the
+ * S2S app; without it Zoom replies 400 with code 4711.
+ *
+ * Returns null when no transcript exists for the meeting.
+ */
+export async function getAICompanionTranscript(
+  instanceUuid: string
+): Promise<ZoomAITranscriptResponse | null> {
+  const token = await getAdminToken();
+  const encodedUuid = encodeInstanceUuid(instanceUuid);
+
+  const response = await fetch(
+    `https://api.zoom.us/v2/meetings/${encodedUuid}/transcript`,
+    {
+      headers: { Authorization: `Bearer ${token}` },
+    }
+  );
+
+  if (!response.ok) {
+    const errorText = await response.text();
+
+    // 4711 = token is missing the transcript scope. Surface this distinctly so
+    // it is obvious in logs that the fix is a scope grant, not a missing transcript.
+    if (errorText.includes('4711')) {
+      throw new MissingScopeError(
+        'S2S app is missing scope cloud_recording:read:meeting_transcript:admin ' +
+          `(Zoom said: ${errorText})`
+      );
+    }
+
+    // 404 / 3322 = this meeting simply has no AI Companion transcript.
+    if (response.status === 404 || errorText.includes('3322')) {
+      return null;
+    }
+
+    throw new Error(
+      `Failed to get AI Companion transcript: ${response.status} - ${errorText}`
+    );
+  }
+
+  return response.json() as Promise<ZoomAITranscriptResponse>;
 }
 
 /**

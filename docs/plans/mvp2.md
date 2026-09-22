@@ -419,8 +419,25 @@ meeting:read:list_past_participants:admin   - Get participants for any meeting
 meeting:read:summary:admin                  - Get AI summary for any meeting
 cloud_recording:read:list_user_recordings:admin   - List recordings by user
 cloud_recording:read:list_recording_files:admin   - Get recording files/transcripts
+cloud_recording:read:meeting_transcript:admin     - Get AI Companion transcript (non-recorded meetings)
 report:read:user:admin                      - Access user reports
 report:read:list_history_meetings:admin     - List all meetings hosted by a user
+```
+
+**Note on `cloud_recording:read:meeting_transcript:admin`:** this one is easy to miss in
+the Marketplace scope picker. The endpoint is `/meetings/{uuid}/transcript`, but the scope
+lives under the **Cloud Recording** category, not Meeting. Search the picker for
+`transcript` rather than the full granular scope name, and finish the app wizard so the
+change is applied. Without it Zoom returns HTTP 400 code 4711, and the proxy silently
+degrades to the AI summary instead of returning a verbatim transcript.
+
+Verify what the S2S app actually holds:
+
+```bash
+set -a && . ./.env && set +a && curl -s -X POST "https://zoom.us/oauth/token" \
+  -u "$ZOOM_ADMIN_CLIENT_ID:$ZOOM_ADMIN_CLIENT_SECRET" \
+  -d "grant_type=account_credentials&account_id=$ZOOM_ADMIN_ACCOUNT_ID" \
+  | python3 -c "import json,sys; print(json.load(sys.stdin).get('scope','').split())"
 ```
 
 ## Zoom API Endpoints Reference
@@ -447,6 +464,7 @@ All endpoints tested and verified with admin scopes:
 | `/v2/past_meetings/{instanceUuid}/participants` | GET | Get meeting participants |
 | `/v2/meetings/{instanceUuid}/meeting_summary` | GET | Get AI Companion summary |
 | `/v2/meetings/{instanceUuid}/recordings` | GET | Get recording files including VTT transcript |
+| `/v2/meetings/{instanceUuid}/transcript` | GET | Get AI Companion transcript (works when there is no cloud recording) |
 
 ### Reports (for listing hosted meetings)
 | Endpoint | Method | Purpose |
@@ -548,25 +566,27 @@ echo -n "YOUR_WEBHOOK_SECRET_TOKEN" | gcloud secrets versions add zoom-webhook-s
 
 ### Step 7: Deploy Cloud Functions
 
-```bash
-# Deploy webhook handler
-gcloud functions deploy zoom-webhook-handler \
-  --runtime=nodejs20 \
-  --trigger-http \
-  --allow-unauthenticated \
-  --set-env-vars=ZOOM_ADMIN_ACCOUNT_ID=xxx,ZOOM_ADMIN_CLIENT_ID=yyy \
-  --set-secrets=ZOOM_ADMIN_CLIENT_SECRET=zoom-admin-client-secret:latest,ZOOM_WEBHOOK_SECRET_TOKEN=zoom-webhook-secret-token:latest \
-  --source=cloud-functions/
+Use the npm scripts rather than raw `gcloud` commands. They pin
+`--project=zoom-mcp-oauth` and `--region=europe-west1`, so a deploy cannot land in
+whichever project happens to be active in your local gcloud config, and they abort
+if the Zoom credentials are not exported (otherwise the function is deployed with
+empty `ZOOM_ADMIN_*` values, which breaks it silently).
 
-# Deploy API endpoints
-gcloud functions deploy zoom-proxy-api \
-  --runtime=nodejs20 \
-  --trigger-http \
-  --allow-unauthenticated \
-  --set-env-vars=ZOOM_ADMIN_ACCOUNT_ID=xxx,ZOOM_ADMIN_CLIENT_ID=yyy \
-  --set-secrets=ZOOM_ADMIN_CLIENT_SECRET=zoom-admin-client-secret:latest \
-  --source=cloud-functions/
+```bash
+# Authenticate as an account with deploy rights on the project
+gcloud auth login <you>@sweatco.in
+
+cd cloud-functions
+set -a && . ../.env && set +a   # required: the deploy scripts read these
+npm run build
+
+npm run deploy:webhook
+npm run deploy:api
 ```
+
+`gcloud functions deploy` creates the function when it does not already exist, so a
+deploy pointed at the wrong project silently creates a second copy there instead of
+failing. This is why the project is pinned in the scripts.
 
 ### Step 8: Deploy Cleanup Job
 
