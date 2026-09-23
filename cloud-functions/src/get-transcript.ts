@@ -9,6 +9,7 @@ import type { Request, Response } from '@google-cloud/functions-framework';
 import type { GetContentRequest, GetTranscriptResponse } from './types.js';
 import { validateUserToken, extractBearerToken } from './utils/validate-token.js';
 import { checkParticipation } from './utils/firestore.js';
+import { vttToPlainText } from './utils/vtt-parser.js';
 import {
   getMeetingRecordings,
   downloadTranscript,
@@ -16,74 +17,6 @@ import {
   getAICompanionTranscript,
   MissingScopeError,
 } from './utils/admin-client.js';
-
-/**
- * Parse VTT content to plain text with speaker labels
- */
-function parseVttToText(vttContent: string): string {
-  const lines = vttContent.split('\n');
-  const textLines: string[] = [];
-  let currentSpeaker = '';
-  let lastText = '';
-
-  for (const line of lines) {
-    const trimmed = line.trim();
-
-    // Skip header, timestamps, empty lines
-    if (
-      !trimmed ||
-      trimmed === 'WEBVTT' ||
-      trimmed.includes('-->') ||
-      /^\d+$/.test(trimmed)
-    ) {
-      continue;
-    }
-
-    // Check for speaker label (format: "Name: text" or "<v Name>text</v>")
-    const speakerMatch = trimmed.match(/^<v ([^>]+)>(.*)$/);
-    if (speakerMatch) {
-      const [, speaker, text] = speakerMatch;
-      const cleanText = text.replace(/<\/v>$/, '').trim();
-
-      if (speaker !== currentSpeaker) {
-        currentSpeaker = speaker;
-        if (cleanText) {
-          textLines.push(`${speaker}: ${cleanText}`);
-          lastText = cleanText;
-        }
-      } else if (cleanText && cleanText !== lastText) {
-        // Same speaker, append or continue
-        const lastLine = textLines[textLines.length - 1];
-        if (lastLine && lastLine.startsWith(`${speaker}:`)) {
-          textLines[textLines.length - 1] = `${lastLine} ${cleanText}`;
-        } else {
-          textLines.push(cleanText);
-        }
-        lastText = cleanText;
-      }
-    } else if (trimmed.includes(':') && !trimmed.includes('-->')) {
-      // Simple "Speaker: text" format
-      const colonIndex = trimmed.indexOf(':');
-      const speaker = trimmed.slice(0, colonIndex).trim();
-      const text = trimmed.slice(colonIndex + 1).trim();
-
-      if (speaker && text && speaker !== currentSpeaker) {
-        currentSpeaker = speaker;
-        textLines.push(`${speaker}: ${text}`);
-        lastText = text;
-      } else if (text && text !== lastText) {
-        textLines.push(trimmed);
-        lastText = text;
-      }
-    } else if (trimmed !== lastText) {
-      // Plain text line
-      textLines.push(trimmed);
-      lastText = trimmed;
-    }
-  }
-
-  return textLines.join('\n');
-}
 
 /**
  * Handle get-transcript request
@@ -133,7 +66,7 @@ export async function handleGetTranscript(req: Request, res: Response): Promise<
 
     if (transcriptFile && transcriptFile.download_url) {
       const vttContent = await downloadTranscript(transcriptFile.download_url);
-      const parsedText = parseVttToText(vttContent);
+      const parsedText = vttToPlainText(vttContent);
 
       const response: GetTranscriptResponse = {
         transcript: parsedText,
@@ -156,7 +89,7 @@ export async function handleGetTranscript(req: Request, res: Response): Promise<
     if (aiTranscript?.download_url && aiTranscript.can_download !== false) {
       const content = await downloadTranscript(aiTranscript.download_url);
       const parsedText = content.trimStart().startsWith('WEBVTT')
-        ? parseVttToText(content)
+        ? vttToPlainText(content)
         : content;
 
       if (parsedText.trim()) {
