@@ -34,8 +34,8 @@ export interface MeetingParticipantRecord {
 
 export interface UserInfo {
   email: string;
-  role_id: number;
-  isAdmin: boolean; // role_id <= 1
+  role_id: string;
+  isAdmin: boolean; // role_id is "0" (Owner) or "1" (Admin)
 }
 
 // ============ Zoom Webhook Types ============
@@ -73,6 +73,7 @@ export interface ZoomWebhookParticipant {
 
 export interface ZoomUserMeResponse {
   id: string;
+  account_id: string;
   email: string;
   role_id: string;
   first_name: string;

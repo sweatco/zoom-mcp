@@ -6,7 +6,7 @@
 
 import type { Request, Response } from '@google-cloud/functions-framework';
 import type { ListMeetingsRequest, ListMeetingsResponse } from './types.js';
-import { validateUserToken, extractBearerToken } from './utils/validate-token.js';
+import { validateUserToken, extractBearerToken, ForeignAccountError } from './utils/validate-token.js';
 import { queryMeetingsByEmail, queryAllMeetings } from './utils/firestore.js';
 
 /**
@@ -24,6 +24,10 @@ export async function handleListMeetings(req: Request, res: Response): Promise<v
   try {
     userInfo = await validateUserToken(token);
   } catch (error) {
+    if (error instanceof ForeignAccountError) {
+      res.status(403).json({ error: error.message });
+      return;
+    }
     res.status(401).json({ error: 'Invalid or expired token' });
     return;
   }
