@@ -75,17 +75,21 @@ async function proxyRequest<T>(action: string, body: Record<string, unknown> = {
   if (!response.ok) {
     const errorText = await response.text();
     let errorMessage = `Proxy error: ${response.status}`;
+    let errorCode: string | undefined;
 
     try {
       const errorJson = JSON.parse(errorText);
       if (errorJson.error) {
         errorMessage = errorJson.error;
       }
+      if (typeof errorJson.code === 'string') {
+        errorCode = errorJson.code;
+      }
     } catch {
       // Use status-based message
     }
 
-    throw new ProxyError(response.status, errorMessage);
+    throw new ProxyError(response.status, errorMessage, errorCode);
   }
 
   return response.json() as Promise<T>;
@@ -94,10 +98,17 @@ async function proxyRequest<T>(action: string, body: Record<string, unknown> = {
 export class ProxyError extends Error {
   constructor(
     public status: number,
-    message: string
+    message: string,
+    /** Machine-readable code from the proxy, e.g. 'foreign_account' */
+    public code?: string
   ) {
     super(message);
     this.name = 'ProxyError';
+  }
+
+  /** The user's Zoom account is not the one this proxy serves */
+  get isForeignAccount(): boolean {
+    return this.status === 403 && this.code === 'foreign_account';
   }
 }
 

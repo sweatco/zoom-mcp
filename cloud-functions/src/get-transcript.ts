@@ -7,7 +7,7 @@
 
 import type { Request, Response } from '@google-cloud/functions-framework';
 import type { GetContentRequest, GetTranscriptResponse } from './types.js';
-import { validateUserToken, extractBearerToken, ForeignAccountError } from './utils/validate-token.js';
+import { authenticateRequest } from './utils/validate-token.js';
 import { checkParticipation } from './utils/firestore.js';
 import { vttToPlainText } from './utils/vtt-parser.js';
 import {
@@ -22,22 +22,8 @@ import {
  * Handle get-transcript request
  */
 export async function handleGetTranscript(req: Request, res: Response): Promise<void> {
-  // Extract and validate user token
-  const token = extractBearerToken(req.headers.authorization);
-  if (!token) {
-    res.status(401).json({ error: 'Missing Authorization header' });
-    return;
-  }
-
-  let userInfo;
-  try {
-    userInfo = await validateUserToken(token);
-  } catch (error) {
-    if (error instanceof ForeignAccountError) {
-      res.status(403).json({ error: error.message });
-      return;
-    }
-    res.status(401).json({ error: 'Invalid or expired token' });
+  const userInfo = await authenticateRequest(req, res);
+  if (!userInfo) {
     return;
   }
 

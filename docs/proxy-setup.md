@@ -297,7 +297,18 @@ Even at 10x growth, costs would be minimal (~$1-5/month).
 
 **"Admin access required" error**
 - Only Zoom Owners (role_id=0) and Admins (role_id=1) can query other users
+- Custom roles are not treated as admins, even with admin privileges
 - Regular members can only see their own meetings
+
+**"This Zoom account is not allowed to use this service"**
+- The proxy only accepts users of the Zoom account its S2S app belongs to (`ZOOM_ADMIN_ACCOUNT_ID`)
+- Users from other accounts still see their own hosted meetings through the direct API
+
+## Security Notes
+
+- **Account check.** The proxy validates every user token with Zoom's `GET /users/me` and rejects users whose `account_id` differs from `ZOOM_ADMIN_ACCOUNT_ID`. If that variable is missing, every request fails with 500.
+- **Any OAuth app's token is accepted.** The proxy does not check which OAuth app a token was issued to: Zoom does not document access-token claims or offer token introspection. A token that any third-party Zoom app obtained from one of your users works on the proxy with that user's rights, and an Owner's or Admin's token gives access to all meetings. Be careful which Marketplace apps your admins authorize.
+- **Hosted OAuth.** With Sweatco's hosted OAuth service (Option A), user tokens pass through Sweatco's `zoom-mcp-oauth` function during exchange and refresh. Deploy your own OAuth function (Step 7) if that is not acceptable.
 
 **Missing historical meetings**
 - Run the backfill script for the desired date range

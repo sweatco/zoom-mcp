@@ -10,18 +10,44 @@
  * personal one) would be treated as an admin of ours.
  */
 
+import type { Request, Response } from '@google-cloud/functions-framework';
 import type { UserInfo, ZoomUserMeResponse } from '../types.js';
 
 /** Zoom's built-in Owner and Admin role IDs */
 const ADMIN_ROLE_IDS = new Set(['0', '1']);
 
 /**
- * Thrown when the token is valid but belongs to a user of another Zoom account
+ * Machine-readable error codes returned in `{ error, code }` bodies.
+ * The MCP client relies on `foreign_account` to tell it apart from other 403s.
  */
+export type AuthErrorCode =
+  | 'missing_token'
+  | 'invalid_token'
+  | 'foreign_account'
+  | 'server_misconfigured'
+  | 'token_validation_failed';
+
+/** Zoom rejected the token (expired, revoked or malformed) */
+export class InvalidTokenError extends Error {
+  constructor() {
+    super('Invalid or expired token');
+    this.name = 'InvalidTokenError';
+  }
+}
+
+/** The token is valid but belongs to a user of another Zoom account */
 export class ForeignAccountError extends Error {
   constructor() {
     super('Access denied. This Zoom account is not allowed to use this service.');
     this.name = 'ForeignAccountError';
+  }
+}
+
+/** The proxy is missing configuration it needs to validate tokens */
+export class ConfigError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = 'ConfigError';
   }
 }
 
@@ -30,15 +56,17 @@ export class ForeignAccountError extends Error {
  *
  * @param token - User's OAuth access token
  * @returns User info including email, role_id, and isAdmin flag
+ * @throws ConfigError if ZOOM_ADMIN_ACCOUNT_ID is not set
+ * @throws InvalidTokenError if Zoom rejects the token
  * @throws ForeignAccountError if the user belongs to another Zoom account
- * @throws Error if token is invalid or API call fails
+ * @throws Error if the Zoom API call fails for another reason
  */
 export async function validateUserToken(token: string): Promise<UserInfo> {
   // Read at call time and fail closed: without the expected account we can't
   // tell our users from anyone else's.
   const expectedAccountId = process.env.ZOOM_ADMIN_ACCOUNT_ID;
   if (!expectedAccountId) {
-    throw new Error('ZOOM_ADMIN_ACCOUNT_ID is not configured');
+    throw new ConfigError('ZOOM_ADMIN_ACCOUNT_ID is not configured');
   }
 
   const response = await fetch('https://api.zoom.us/v2/users/me', {
@@ -49,7 +77,7 @@ export async function validateUserToken(token: string): Promise<UserInfo> {
 
   if (!response.ok) {
     if (response.status === 401) {
-      throw new Error('Invalid or expired token');
+      throw new InvalidTokenError();
     }
     const errorText = await response.text();
     throw new Error(`Failed to validate token: ${response.status} - ${errorText}`);
@@ -93,4 +121,37 @@ export function extractBearerToken(authHeader: string | undefined): string | nul
   }
 
   return parts[1];
+}
+
+function sendAuthError(res: Response, status: number, code: AuthErrorCode, error: string): void {
+  res.status(status).json({ error, code });
+}
+
+/**
+ * Authenticate a proxy request. On failure, sends the error response and
+ * returns null; the caller must stop handling the request.
+ */
+export async function authenticateRequest(req: Request, res: Response): Promise<UserInfo | null> {
+  const token = extractBearerToken(req.headers.authorization);
+  if (!token) {
+    sendAuthError(res, 401, 'missing_token', 'Missing Authorization header');
+    return null;
+  }
+
+  try {
+    return await validateUserToken(token);
+  } catch (error) {
+    if (error instanceof InvalidTokenError) {
+      sendAuthError(res, 401, 'invalid_token', error.message);
+    } else if (error instanceof ForeignAccountError) {
+      sendAuthError(res, 403, 'foreign_account', error.message);
+    } else if (error instanceof ConfigError) {
+      console.error(`Proxy misconfigured: ${error.message}`);
+      sendAuthError(res, 500, 'server_misconfigured', 'Proxy is misconfigured');
+    } else {
+      console.error('Token validation failed:', error);
+      sendAuthError(res, 502, 'token_validation_failed', 'Could not validate token with Zoom');
+    }
+    return null;
+  }
 }
