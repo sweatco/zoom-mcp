@@ -180,6 +180,10 @@ The MCP automatically finds the best available transcript:
 - Only Zoom Owners (role_id=0) and Admins (role_id=1) can query other users
 - Requires proxy to be configured
 
+**"This Zoom account is not allowed to use this service"**
+- The proxy only serves users of the Zoom account it was set up for
+- You still get meetings you hosted through the direct API
+
 ## Privacy & Data
 
 **Basic setup:**

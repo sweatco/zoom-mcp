@@ -72,7 +72,9 @@ export async function getSummary(input: GetSummaryInput): Promise<SummaryRespons
       if (error instanceof ProxyError) {
         if (error.status === 403) {
           throw new Error(
-            `Access denied. You did not participate in meeting ${instanceUuid}.`
+            error.isForeignAccount
+              ? error.message
+              : `Access denied. You did not participate in meeting ${instanceUuid}.`
           );
         }
         if (error.status === 404) {

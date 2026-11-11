@@ -112,12 +112,19 @@ export async function listMeetings(input: ListMeetingsInput): Promise<MeetingInf
 
       return filteredMeetings;
     } catch (error) {
-      // If admin access denied, throw the error instead of falling back
       if (error instanceof ProxyError && error.status === 403) {
-        throw new Error('Admin access required to query other users\' meetings');
+        // The proxy serves another Zoom account: there is nothing it can add,
+        // but the user's own hosted meetings are still available directly.
+        if (error.isForeignAccount && !input.user_email) {
+          console.error(`Proxy rejected this account (${error.message}), falling back to direct API`);
+        } else {
+          // Admin access denied: throw the error instead of falling back
+          throw new Error(error.isForeignAccount ? error.message : 'Admin access required to query other users\' meetings');
+        }
+      } else {
+        // Proxy failed, fall back to direct API
+        console.error('Proxy list-meetings failed, falling back to direct API:', error);
       }
-      // Proxy failed, fall back to direct API
-      console.error('Proxy list-meetings failed, falling back to direct API:', error);
     }
   }
 

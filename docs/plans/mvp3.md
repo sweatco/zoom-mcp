@@ -377,7 +377,7 @@ Proxies `revoke_meeting_access` tool calls.
 
 ## Security Considerations
 
-1. **Admin-only**: All management tools require `role_id <= 1`
+1. **Admin-only**: All management tools require an Owner or Admin (`role_id` "0" or "1") of our Zoom account (`account_id` checked against `ZOOM_ADMIN_ACCOUNT_ID`)
 2. **Audit trail**: All operations store `created_by`/`granted_by` with admin email
 3. **Validation**: Pre-registered emails are validated against Zoom at webhook time
 4. **Departed employees**: Invalid emails are silently skipped (self-cleaning)

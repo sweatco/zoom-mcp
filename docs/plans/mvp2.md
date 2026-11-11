@@ -317,14 +317,14 @@ Zoom uses fixed role IDs across all accounts ([confirmed by Zoom](https://devfor
 
 ### Implementation
 
-When validating a user's token, also fetch their `role_id`:
+When validating a user's token, fetch `/users/me`, require the user to belong to our Zoom account, and derive admin status from `role_id`:
 
 ```typescript
 // In validate-token.ts
 interface UserInfo {
   email: string;
-  role_id: number;
-  isAdmin: boolean;  // role_id <= 1
+  role_id: string;
+  isAdmin: boolean;  // role_id is "0" (Owner) or "1" (Admin)
 }
 
 async function validateUserToken(token: string): Promise<UserInfo> {
@@ -332,10 +332,16 @@ async function validateUserToken(token: string): Promise<UserInfo> {
     headers: { Authorization: `Bearer ${token}` }
   });
   const user = await res.json();
+  // Role IDs are the same in every Zoom account, so role_id alone does not
+  // tie a user to our org: the owner of any free account has role_id "0".
+  if (user.account_id !== process.env.ZOOM_ADMIN_ACCOUNT_ID) {
+    throw new ForeignAccountError();  // -> 403 { code: 'foreign_account' }
+  }
   return {
     email: user.email,
     role_id: user.role_id,
-    isAdmin: user.role_id <= 1
+    // Exact match: custom roles have opaque string IDs
+    isAdmin: user.role_id === '0' || user.role_id === '1'
   };
 }
 ```
